@@ -232,4 +232,4 @@ Interactive documentation available at `http://localhost:3000/docs` (Swagger UI)
 
 ## License
 
-MIT
+[Apache 2.0](LICENSE) © 2021 WPPConnect Team

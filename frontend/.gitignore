@@ -1,0 +1,25 @@
+# Dependências
+node_modules/
+
+# Ambiente — NUNCA commitar .env com segredos
+.env
+.env.local
+.env.*.local
+
+# Build
+dist/
+build/
+
+# Logs
+*.log
+logs/
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo

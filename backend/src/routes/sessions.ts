@@ -20,7 +20,7 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
         SET status = 'offline', qr_image = NULL, qr_expires_at = NULL
         WHERE user_id = ${userId}
           AND status = 'qr'
-          AND updated_at < NOW() - INTERVAL '90 seconds'
+          AND (qr_expires_at IS NULL OR qr_expires_at < NOW())
       `;
 
       const rows = await sql<{

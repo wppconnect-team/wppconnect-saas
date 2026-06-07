@@ -104,7 +104,19 @@ export default function ConexoesPage({ toast }) {
       }
     } else if (action === 'status')     { toast(`Status: ${session.status}`);
     } else if (action === 'configurar') { toast('Abrindo configuração de produtos…');
-    } else if (action === 'copy')       { toast('Token copiado');
+    } else if (action === 'copy') {
+      try {
+        const res = await sessionsService.get(session.id);
+        const token = res.data?.wppToken;
+        if (token) {
+          await navigator.clipboard.writeText(token);
+          toast('Token copiado');
+        } else {
+          toast('Token não disponível para esta sessão', 'error');
+        }
+      } catch {
+        toast('Erro ao copiar token', 'error');
+      }
     } else if (action === 'logs') {
       sessionStorage.setItem('logs_source_filter', session.id);
       window.location.hash = 'logs';
@@ -149,7 +161,26 @@ export default function ConexoesPage({ toast }) {
               <Ic.Trash/> Deletar {selected.size}
             </button>
           )}
-          <button className="btn secondary"><Ic.Download/> Exportar</button>
+          <button className="btn secondary" onClick={() => {
+            const header = ['id','name','phone','tag','status','messagesToday','lastActivity'];
+            const list = selected.size > 0 ? sessions.filter(s => selected.has(s.id)) : sessions;
+            const csv = [header, ...list.map(s => [
+              s.id,
+              `"${String(s.name).replace(/"/g,'""')}"`,
+              s.phone,
+              s.tag,
+              s.status,
+              s.messagesToday ?? 0,
+              s.lastActivity ?? '',
+            ])].map(r => r.join(',')).join('\n');
+            const a = Object.assign(document.createElement('a'), {
+              href: URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' })),
+              download: 'sessoes.csv',
+            });
+            a.click();
+            URL.revokeObjectURL(a.href);
+            toast(`${list.length} sessões exportadas`);
+          }}><Ic.Download/> Exportar</button>
           <button className="btn primary" onClick={() => setModalOpen(true)}>
             <Ic.Plus/> Nova Sessão
           </button>

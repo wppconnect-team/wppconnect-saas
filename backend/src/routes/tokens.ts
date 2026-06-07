@@ -65,6 +65,37 @@ export const tokenRoutes = new Elysia({ prefix: '/api/tokens' })
     }
   )
 
+  // PUT /api/tokens/:id  (editar nome/escopos)
+  .put('/:id',
+    async ({ params, body, set, userId }) => {
+      const { name, scopes } = body;
+
+      const [updated] = await sql`
+        UPDATE api_tokens
+        SET
+          name   = COALESCE(${name   ?? null}::text,    name),
+          scopes = COALESCE(${scopes ?? null}::text[],  scopes)
+        WHERE id = ${Number(params.id)}
+          AND user_id = ${userId}
+        RETURNING
+          id, name,
+          token_prefix AS "tokenPrefix",
+          scopes,
+          last_used_at AS "lastUsedAt",
+          created_at   AS "createdAt"
+      `;
+
+      if (!updated) { set.status = 404; return { error: 'Token não encontrado' }; }
+      return { data: updated };
+    },
+    {
+      body: t.Object({
+        name:   t.Optional(t.String()),
+        scopes: t.Optional(t.Array(t.String())),
+      }),
+    }
+  )
+
   // DELETE /api/tokens/:id  (revogar)
   .delete('/:id',
     async ({ params, set, userId }) => {

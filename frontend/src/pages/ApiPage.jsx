@@ -75,6 +75,67 @@ function NewTokenModal({ onClose, onCreate }) {
   );
 }
 
+function EditTokenModal({ token, onClose, onSave }) {
+  const [name, setName]     = React.useState(token.name);
+  const [scopes, setScopes] = React.useState(token.scopes ?? []);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError]   = React.useState(null);
+
+  const ALL_SCOPES = ['send', 'read', 'webhook', 'admin'];
+  const toggleScope = (s) =>
+    setScopes(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!name.trim() || scopes.length === 0) return;
+    setLoading(true); setError(null);
+    try {
+      const res = await tokensService.update(token.id, { name: name.trim(), scopes });
+      onSave(res.data);
+    } catch (err) {
+      setError(err?.error ?? 'Erro ao atualizar token');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <form className="modal" onClick={e => e.stopPropagation()} onSubmit={submit}>
+        <div className="modal-head">
+          <h3>Editar token</h3>
+          <p>Altere o nome ou os escopos deste token.</p>
+        </div>
+        <div className="modal-body">
+          <div className="field">
+            <label>Nome do token</label>
+            <input autoFocus value={name} onChange={e => setName(e.target.value)} required/>
+          </div>
+          <div className="field">
+            <label>Escopos</label>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {ALL_SCOPES.map(s => (
+                <label key={s} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 13 }}>
+                  <input type="checkbox" checked={scopes.includes(s)} onChange={() => toggleScope(s)}/>
+                  <span className="chip mono">{s}</span>
+                </label>
+              ))}
+            </div>
+            {scopes.length === 0 && <div style={{ fontSize: 12, color: 'var(--rose-ink)', marginTop: 4 }}>Selecione ao menos um escopo</div>}
+          </div>
+          {error && <div style={{ color: 'var(--rose-ink)', fontSize: 13, marginTop: 8 }}>{error}</div>}
+        </div>
+        <div className="modal-foot">
+          <button type="button" className="btn secondary" onClick={onClose} disabled={loading}>Cancelar</button>
+          <button type="submit" className="btn primary" disabled={loading || scopes.length === 0 || !name.trim()}>
+            <Ic.Check/> {loading ? 'Salvando…' : 'Salvar'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function PlainTokenModal({ token, onClose }) {
   const [copied, setCopied] = React.useState(false);
   const copy = () => {
@@ -113,8 +174,9 @@ export default function ApiPage({ toast }) {
   const [menuId, setMenuId]       = React.useState(null);
   const [showCurl, setShowCurl]   = React.useState(false);
   const [query, setQuery]         = React.useState('');
-  const [modalOpen, setModalOpen] = React.useState(false);
+  const [modalOpen, setModalOpen]   = React.useState(false);
   const [plainToken, setPlainToken] = React.useState(null);
+  const [editToken, setEditToken]   = React.useState(null);
 
   React.useEffect(() => {
     const close = () => setMenuId(null);
@@ -152,6 +214,16 @@ export default function ApiPage({ toast }) {
     setPlainToken(plain);
   };
 
+  const handleEdit = (updated) => {
+    setTokens(l => l.map(t => t.id === updated.id ? updated : t));
+    setEditToken(null);
+    toast?.('Token atualizado');
+  };
+
+  const copyBaseUrl = () => {
+    navigator.clipboard.writeText('https://api.wppconnect.io/v1').then(() => toast?.('URL copiada'));
+  };
+
   const filtered = tokens.filter(t => !query || t.name.toLowerCase().includes(query.toLowerCase()));
 
   const formatDate = (d) => d ? new Date(d).toLocaleDateString('pt-BR') : '—';
@@ -185,7 +257,7 @@ export default function ApiPage({ toast }) {
         <span style={{ flex: 1, fontFamily: 'JetBrains Mono, monospace', fontSize: 13, color: 'var(--accent-ink)' }}>
           https://api.wppconnect.io/v1
         </span>
-        <button className="btn ghost" onClick={() => toast?.('URL copiada')}><Ic.Clipboard/> Copiar</button>
+        <button className="btn ghost" onClick={copyBaseUrl}><Ic.Clipboard/> Copiar</button>
       </div>
 
       {/* Métricas */}
@@ -273,7 +345,7 @@ export default function ApiPage({ toast }) {
                       <button className="kbd-btn" onClick={e => { e.stopPropagation(); setMenuId(m => m === t.id ? null : t.id); }}><Ic.Dots/></button>
                       {menuId === t.id && (
                         <div className="dropdown" style={{ right: 0, left: 'auto', zIndex: 20 }} onClick={e => e.stopPropagation()}>
-                          <button className="dropdown-item" onClick={() => { setMenuId(null); }}><Ic.Cog className="icon"/>Editar</button>
+                          <button className="dropdown-item" onClick={() => { setMenuId(null); setEditToken(t); }}><Ic.Cog className="icon"/>Editar</button>
                           <div className="dropdown-sep"/>
                           <button className="dropdown-item danger" onClick={() => handleRevoke(t.id)}><Ic.Trash className="icon"/>Revogar</button>
                         </div>
@@ -303,6 +375,9 @@ export default function ApiPage({ toast }) {
       )}
       {plainToken && (
         <PlainTokenModal token={plainToken} onClose={() => setPlainToken(null)}/>
+      )}
+      {editToken && (
+        <EditTokenModal token={editToken} onClose={() => setEditToken(null)} onSave={handleEdit}/>
       )}
     </>
   );

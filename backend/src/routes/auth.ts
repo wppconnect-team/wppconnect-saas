@@ -89,9 +89,9 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
     },
     {
       body: t.Object({
-        email:          t.String({ format: 'email' }),
-        password:       t.String({ minLength: 1 }),
-        turnstileToken: t.Optional(t.String()),
+        email:          t.String({ format: 'email', maxLength: 254 }),
+        password:       t.String({ minLength: 1, maxLength: 1000 }),
+        turnstileToken: t.Optional(t.String({ maxLength: 2048 })),
       }),
     }
   )
@@ -176,9 +176,9 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
     },
     {
       body: t.Object({
-        name:     t.String({ minLength: 2 }),
-        email:    t.String({ format: 'email' }),
-        password: t.String({ minLength: 6 }),
+        name:     t.String({ minLength: 2, maxLength: 100 }),
+        email:    t.String({ format: 'email', maxLength: 254 }),
+        password: t.String({ minLength: 6, maxLength: 1000 }),
       }),
     }
   )

@@ -123,9 +123,9 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
         tag:     t.Optional(t.String()),
         webhook: t.Optional(t.String()),
         proxy:   t.Optional(t.Object({
-          url:      t.String(),
-          username: t.Optional(t.String()),
-          password: t.Optional(t.String()),
+          url:      t.String({ format: 'uri', maxLength: 2048 }),
+          username: t.Optional(t.String({ maxLength: 200 })),
+          password: t.Optional(t.String({ maxLength: 200 })),
         })),
       }),
     }

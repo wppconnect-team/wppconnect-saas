@@ -8,6 +8,9 @@ RUN bun install --frozen-lockfile --production
 FROM base AS runner
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# Transfere ownership para o usuário não-root que a imagem oven/bun já inclui
+RUN chown -R bun:bun /app
+USER bun
 EXPOSE 3000
 ENV NODE_ENV=production
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \

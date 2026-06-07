@@ -2,6 +2,24 @@ import { Elysia, t } from 'elysia';
 import { authPlugin } from '../plugins/auth';
 import { sql } from '../db';
 
+// Controle de conexões SSE ativas por usuário
+const activeStreams   = new Map<string, number>();
+const MAX_PER_USER   = 5;
+const STREAM_MAX_MS  = 30 * 60 * 1000; // 30 minutos máximo por conexão
+
+function incStream(userId: string): boolean {
+  const n = activeStreams.get(userId) ?? 0;
+  if (n >= MAX_PER_USER) return false;
+  activeStreams.set(userId, n + 1);
+  return true;
+}
+
+function decStream(userId: string): void {
+  const n = activeStreams.get(userId) ?? 1;
+  if (n <= 1) activeStreams.delete(userId);
+  else        activeStreams.set(userId, n - 1);
+}
+
 export const logRoutes = new Elysia({ prefix: '/api/logs' })
   .use(authPlugin)
 
@@ -56,15 +74,21 @@ export const logRoutes = new Elysia({ prefix: '/api/logs' })
   )
 
   // GET /api/logs/stream — Server-Sent Events (logs em tempo real)
-  .get('/stream', async ({ userId }) => {
+  .get('/stream', async ({ userId, set }) => {
+    if (!incStream(userId)) {
+      set.status = 429;
+      return new Response('Limite de conexões simultâneas atingido.', { status: 429 });
+    }
+
     let lastId = 0;
     const [latest] = await sql<{ id: number }[]>`
       SELECT id FROM logs WHERE user_id = ${userId} ORDER BY id DESC LIMIT 1
     `;
     if (latest) lastId = Number(latest.id);
 
-    const enc    = new TextEncoder();
-    let   active = true;
+    const enc      = new TextEncoder();
+    let   active   = true;
+    const deadline = Date.now() + STREAM_MAX_MS;
 
     const stream = new ReadableStream({
       async start(controller) {
@@ -73,11 +97,11 @@ export const logRoutes = new Elysia({ prefix: '/api/logs' })
           catch { active = false; return false; }
         };
 
-        if (!enq(': connected\n\n')) return;
+        if (!enq(': connected\n\n')) { decStream(userId); return; }
 
-        while (active) {
+        while (active && Date.now() < deadline) {
           await new Promise<void>(r => setTimeout(r, 2000));
-          if (!active) break;
+          if (!active || Date.now() >= deadline) break;
 
           try {
             const rows = await sql<{
@@ -91,15 +115,18 @@ export const logRoutes = new Elysia({ prefix: '/api/logs' })
             `;
             for (const row of rows) {
               if (Number(row.id) > lastId) lastId = Number(row.id);
-              if (!enq(`data: ${JSON.stringify(row)}\n\n`)) return;
+              if (!enq(`data: ${JSON.stringify(row)}\n\n`)) { decStream(userId); return; }
             }
-            if (!enq(': heartbeat\n\n')) return;
+            if (!enq(': heartbeat\n\n')) { decStream(userId); return; }
           } catch { active = false; break; }
         }
 
+        decStream(userId);
+        // Sinaliza fim gracioso quando o timeout é atingido
+        if (Date.now() >= deadline) enq('event: timeout\ndata: {}\n\n');
         try { controller.close(); } catch {}
       },
-      cancel() { active = false; },
+      cancel() { active = false; decStream(userId); },
     });
 
     return new Response(stream, {
@@ -129,8 +156,8 @@ export const logRoutes = new Elysia({ prefix: '/api/logs' })
     {
       body: t.Object({
         level:   t.Union([t.Literal('info'), t.Literal('warn'), t.Literal('error'), t.Literal('ok')]),
-        message: t.String({ minLength: 1 }),
-        source:  t.Optional(t.String()),
+        message: t.String({ minLength: 1, maxLength: 2000 }),
+        source:  t.Optional(t.String({ maxLength: 200 })),
       }),
     }
   );

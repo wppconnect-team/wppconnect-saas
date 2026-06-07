@@ -27,8 +27,7 @@ services:
     volumes:
       - pg_data:/var/lib/postgresql/data
       - ./migrations:/docker-entrypoint-initdb.d:ro
-    ports:
-      - "5432:5432"
+    # Porta 5432 não exposta para o host — acesso apenas interno via rede wppconnect
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U wppconnect -d wppconnect"]
       interval: 5s

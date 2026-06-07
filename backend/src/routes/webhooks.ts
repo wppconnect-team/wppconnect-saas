@@ -3,6 +3,32 @@ import { authPlugin } from '../plugins/auth';
 import { sql } from '../db';
 import { insertLog } from '../lib/log';
 
+// Bloqueia URLs que apontam para redes privadas/loopback (proteção contra SSRF)
+function isPrivateUrl(raw: string): boolean {
+  let url: URL;
+  try { url = new URL(raw); } catch { return true; }
+
+  if (!['http:', 'https:'].includes(url.protocol)) return true;
+
+  const h = url.hostname;
+  if (h === 'localhost') return true;
+  if (/^127\./.test(h)) return true;
+  if (h === '::1' || h === '[::1]') return true;
+  if (/^0\./.test(h)) return true;
+  // RFC 1918 privados
+  if (/^10\./.test(h)) return true;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return true;
+  if (/^192\.168\./.test(h)) return true;
+  // Link-local (AWS metadata, Azure IMDS, etc.)
+  if (/^169\.254\./.test(h)) return true;
+  // IPv6 link-local
+  if (/^fe80:/i.test(h)) return true;
+  // Loopback IPv6 completo
+  if (/^\[?::1\]?$/.test(h)) return true;
+
+  return false;
+}
+
 export const webhookRoutes = new Elysia({ prefix: '/api/webhooks' })
   .use(authPlugin)
 
@@ -52,6 +78,11 @@ export const webhookRoutes = new Elysia({ prefix: '/api/webhooks' })
     async ({ body, set, userId }) => {
       const { url, events } = body;
 
+      if (isPrivateUrl(url)) {
+        set.status = 422;
+        return { error: 'URL inválida. Endereços de rede privada não são permitidos.' };
+      }
+
       const [webhook] = await sql`
         INSERT INTO webhooks (url, events, user_id)
         VALUES (${url}, ${events}, ${userId})
@@ -69,7 +100,7 @@ export const webhookRoutes = new Elysia({ prefix: '/api/webhooks' })
     },
     {
       body: t.Object({
-        url:    t.String({ format: 'uri' }),
+        url:    t.String({ format: 'uri', maxLength: 2048 }),
         events: t.Array(t.String(), { minItems: 1 }),
       }),
     }
@@ -79,6 +110,11 @@ export const webhookRoutes = new Elysia({ prefix: '/api/webhooks' })
   .put('/:id',
     async ({ params, body, set, userId }) => {
       const { url, events, status } = body;
+
+      if (url && isPrivateUrl(url)) {
+        set.status = 422;
+        return { error: 'URL inválida. Endereços de rede privada não são permitidos.' };
+      }
 
       const [updated] = await sql`
         UPDATE webhooks
@@ -100,7 +136,7 @@ export const webhookRoutes = new Elysia({ prefix: '/api/webhooks' })
     },
     {
       body: t.Object({
-        url:    t.Optional(t.String()),
+        url:    t.Optional(t.String({ maxLength: 2048 })),
         events: t.Optional(t.Array(t.String())),
         status: t.Optional(t.String()),
       }),
@@ -115,6 +151,12 @@ export const webhookRoutes = new Elysia({ prefix: '/api/webhooks' })
         WHERE id = ${Number(params.id)} AND user_id = ${userId}
       `;
       if (!webhook) { set.status = 404; return { error: 'Webhook não encontrado' }; }
+
+      // Bloqueia SSRF mesmo para webhooks já cadastrados (segurança em profundidade)
+      if (isPrivateUrl(webhook.url)) {
+        set.status = 422;
+        return { error: 'URL inválida. Endereços de rede privada não são permitidos.' };
+      }
 
       const payload = {
         event:      'test.ping',

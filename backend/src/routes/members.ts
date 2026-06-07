@@ -2,11 +2,21 @@ import { Elysia, t } from 'elysia';
 import { authPlugin } from '../plugins/auth';
 import { sql } from '../db';
 
+async function requireAdmin(userId: string): Promise<boolean> {
+  const [u] = await sql<{ role: string }[]>`SELECT role FROM users WHERE id = ${userId}`;
+  return u?.role === 'admin';
+}
+
 export const memberRoutes = new Elysia({ prefix: '/api/members' })
   .use(authPlugin)
 
-  // GET /api/members
-  .get('/', async ({ userId }) => {
+  // GET /api/members — apenas admins podem ver a lista
+  .get('/', async ({ userId, set }) => {
+    if (!(await requireAdmin(userId))) {
+      set.status = 403;
+      return { error: 'Acesso negado. Apenas administradores podem gerenciar membros.' };
+    }
+
     const rows = await sql<{
       id: string; name: string; email: string;
       role: string; memberStatus: string; createdAt: string;
@@ -20,9 +30,14 @@ export const memberRoutes = new Elysia({ prefix: '/api/members' })
     return { data: rows, currentUserId: userId };
   })
 
-  // POST /api/members — convite (cria usuário com senha temporária)
+  // POST /api/members — convite (apenas admins)
   .post('/',
-    async ({ body, set }) => {
+    async ({ body, set, userId }) => {
+      if (!(await requireAdmin(userId))) {
+        set.status = 403;
+        return { error: 'Acesso negado. Apenas administradores podem convidar membros.' };
+      }
+
       const { name, email, role } = body;
 
       const [existing] = await sql`SELECT id FROM users WHERE email = ${email} LIMIT 1`;
@@ -53,16 +68,21 @@ export const memberRoutes = new Elysia({ prefix: '/api/members' })
     },
     {
       body: t.Object({
-        name:  t.String({ minLength: 2 }),
-        email: t.String({ format: 'email' }),
+        name:  t.String({ minLength: 2, maxLength: 100 }),
+        email: t.String({ format: 'email', maxLength: 254 }),
         role:  t.Union([t.Literal('admin'), t.Literal('editor'), t.Literal('viewer')]),
       }),
     }
   )
 
-  // PATCH /api/members/:id — alterar papel
+  // PATCH /api/members/:id — alterar papel (apenas admins)
   .patch('/:id',
     async ({ params, body, userId, set }) => {
+      if (!(await requireAdmin(userId))) {
+        set.status = 403;
+        return { error: 'Acesso negado. Apenas administradores podem alterar papéis.' };
+      }
+
       if (params.id === userId) {
         set.status = 400;
         return { error: 'Você não pode alterar o seu próprio papel.' };
@@ -84,8 +104,13 @@ export const memberRoutes = new Elysia({ prefix: '/api/members' })
     }
   )
 
-  // DELETE /api/members/:id
+  // DELETE /api/members/:id — apenas admins
   .delete('/:id', async ({ params, userId, set }) => {
+    if (!(await requireAdmin(userId))) {
+      set.status = 403;
+      return { error: 'Acesso negado. Apenas administradores podem remover membros.' };
+    }
+
     if (params.id === userId) {
       set.status = 400;
       return { error: 'Você não pode remover a si mesmo.' };

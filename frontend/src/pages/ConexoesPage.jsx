@@ -64,7 +64,8 @@ export default function ConexoesPage({ toast }) {
   const [filter, setFilter]         = React.useState('all');
   const [search, setSearch]         = React.useState('');
   const [selected, setSelected]     = React.useState(new Set());
-  const [activeId, setActiveId]     = React.useState(null);
+  const [activeId, setActiveId]         = React.useState(null);
+  const [activeSessionFull, setActiveSessionFull] = React.useState(null);
   const [modalOpen, setModalOpen]   = React.useState(false);
   const [qrSession, setQrSession]   = React.useState(null);
   const [page, setPage]             = React.useState(1);
@@ -82,6 +83,17 @@ export default function ConexoesPage({ toast }) {
 
   // Reset página ao filtrar/buscar
   React.useEffect(() => setPage(1), [filter, search]);
+
+  // Busca dados completos (qrImage + qrExpiresAt) ao abrir o painel lateral
+  React.useEffect(() => {
+    if (!activeId) { setActiveSessionFull(null); return; }
+    setActiveSessionFull(null);
+    sessionsService.get(activeId)
+      .then(res => setActiveSessionFull(res.data))
+      .catch(() => {
+        setActiveSessionFull(sessions.find(s => s.id === activeId) ?? null);
+      });
+  }, [activeId]);
 
   const counts = React.useMemo(() => ({
     all:       sessions.length,
@@ -386,20 +398,21 @@ export default function ConexoesPage({ toast }) {
         {/* Painel lateral de conexão */}
         {activeSession && (
           <div className="conexoes-panel">
-            <ConnectPanel
-              key={activeSession.id}
-              session={activeSession}
-              onClose={() => setActiveId(null)}
-              onConnected={(id) => {
-                setSessions(list => list.map(s => s.id === id ? { ...s, status: 'connected' } : s));
-                sessionsService.update(id, { status: 'connected', qr_image: null, qr_expires_at: null }).catch(() => {});
-                toast(`Sessão conectada com sucesso`);
-              }}
-              onAbort={(id) => {
-                setSessions(list => list.map(s => s.id === id ? { ...s, status: 'offline' } : s));
-                sessionsService.update(id, { status: 'offline', qr_image: null, qr_expires_at: null }).catch(() => {});
-              }}
-            />
+            {!activeSessionFull
+              ? <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200, color: 'var(--ink-4)', fontSize: 13 }}>
+                  Carregando…
+                </div>
+              : <ConnectPanel
+                  key={activeSessionFull.id}
+                  session={activeSessionFull}
+                  onClose={() => setActiveId(null)}
+                  onConnected={(id) => {
+                    setSessions(list => list.map(s => s.id === id ? { ...s, status: 'connected' } : s));
+                    sessionsService.update(id, { status: 'connected', qr_image: null, qr_expires_at: null }).catch(() => {});
+                    toast('Sessão conectada com sucesso');
+                  }}
+                />
+            }
           </div>
         )}
       </div>

@@ -6,30 +6,41 @@ import { sessionsService } from '../../services/sessions';
 const WPP_SERVER = import.meta.env.VITE_WPP_SERVER ?? 'http://localhost:21465/api';
 const WPP_SOCKET = import.meta.env.VITE_WPP_SOCKET ?? 'http://localhost:21465';
 
-export default function ConnectPanel({ session, onClose, onConnected, onAbort }) {
-  const [mode, setMode]       = React.useState('qr');
+// Calcula estado inicial do QR a partir dos dados do banco
+function getInitQr(session) {
+  if (session.status === 'connected') return { phase: 'connected', image: null, timer: 60 };
+  if (session.qrImage && session.qrExpiresAt) {
+    const secs = Math.round((new Date(session.qrExpiresAt) - Date.now()) / 1000);
+    if (secs > 5) return { phase: 'qr', image: session.qrImage, timer: secs };
+  }
+  return { phase: 'select', image: null, timer: 60 };
+}
 
-  /* ── QR state ── */
-  const [qrPhase, setQrPhase]     = React.useState(session.status === 'connected' ? 'connected' : 'select');
-  const [qrImage, setQrImage]     = React.useState(null);
-  const [qrTimer, setQrTimer]     = React.useState(60);
+export default function ConnectPanel({ session, onClose, onConnected, onAbort }) {
+  const [mode, setMode] = React.useState('qr');
+
+  /* ── QR state — inicializado a partir do banco ── */
+  const [qrInit]                    = React.useState(() => getInitQr(session));
+  const [qrPhase, setQrPhase]       = React.useState(qrInit.phase);
+  const [qrImage, setQrImage]       = React.useState(qrInit.image);
+  const [qrTimer, setQrTimer]       = React.useState(qrInit.timer);
 
   /* ── Code state ── */
-  const [codePhase, setCodePhase] = React.useState('idle'); // idle | loading | code | connected | error
-  const [phone, setPhone]         = React.useState(() => (session.phone ?? '').replace(/\D/g, ''));
-  const [pairCode, setPairCode]   = React.useState('');
-  const [codeTimer, setCodeTimer] = React.useState(60);
-  const [codeError, setCodeError] = React.useState('');
+  const [codePhase, setCodePhase]   = React.useState('idle');
+  const [phone, setPhone]           = React.useState(() => (session.phone ?? '').replace(/\D/g, ''));
+  const [pairCode, setPairCode]     = React.useState('');
+  const [codeTimer, setCodeTimer]   = React.useState(60);
+  const [codeError, setCodeError]   = React.useState('');
 
   /* ── Shared ── */
-  const [errorMsg, setErrorMsg]   = React.useState('');
+  const [errorMsg, setErrorMsg]     = React.useState('');
 
-  const socketRef     = React.useRef(null);
-  const qrTimerRef    = React.useRef(null);
-  const codeTimerRef  = React.useRef(null);
-  const tokenRef      = React.useRef(session.wppToken ?? null);
-  const phaseRef      = React.useRef(qrPhase);
-  const requestQrRef  = React.useRef(null);
+  const socketRef    = React.useRef(null);
+  const qrTimerRef   = React.useRef(null);
+  const codeTimerRef = React.useRef(null);
+  const tokenRef     = React.useRef(session.wppToken ?? null);
+  const phaseRef     = React.useRef(qrPhase);
+  const requestQrRef = React.useRef(null);
 
   React.useEffect(() => { phaseRef.current = qrPhase; }, [qrPhase]);
 
@@ -76,6 +87,12 @@ export default function ConnectPanel({ session, onClose, onConnected, onAbort })
 
   React.useEffect(() => { requestQrRef.current = requestQr; }, [requestQr]);
 
+  /* ── Se já há QR válido no banco, inicia o timer imediatamente ── */
+  React.useEffect(() => {
+    if (qrInit.phase === 'qr') startQrTimer(qrInit.timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /* ── Request Pairing Code ── */
   const requestCode = async () => {
     const cleaned = phone.replace(/\D/g, '');
@@ -83,7 +100,6 @@ export default function ConnectPanel({ session, onClose, onConnected, onAbort })
     setCodeError('');
     setCodePhase('loading');
     try {
-      // waitQrCode: true → código retorna diretamente na resposta HTTP
       const res  = await fetch(`${WPP_SERVER}/${session.id}/start-session`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${tokenRef.current ?? session.id}`, 'Content-Type': 'application/json' },
@@ -93,13 +109,11 @@ export default function ConnectPanel({ session, onClose, onConnected, onAbort })
       const data = await res.json();
 
       if (data.status === 'phoneCode' && data.phoneCode) {
-        // recebeu via HTTP — normaliza formato (pode vir com ou sem traço)
         const raw = (data.phoneCode ?? '').replace('-', '');
         setPairCode(raw.toUpperCase());
         setCodePhase('code');
         startCodeTimer();
       }
-      // socket 'phoneCode' ainda serve como fallback (e.g. se waitQrCode: true não for suportado)
     } catch (err) {
       if (err?.name === 'TimeoutError') {
         setCodeError('Tempo esgotado. Verifique se o número está correto e tente novamente.');
@@ -115,7 +129,6 @@ export default function ConnectPanel({ session, onClose, onConnected, onAbort })
     if (session.status === 'connected') return;
 
     const init = async () => {
-      // Busca wppToken silenciosamente — não inicia sessão ainda
       if (!tokenRef.current) {
         try {
           const res = await sessionsService.get(session.id);
@@ -126,12 +139,18 @@ export default function ConnectPanel({ session, onClose, onConnected, onAbort })
       const socket = io(WPP_SOCKET, { transports: ['websocket', 'polling'] });
       socketRef.current = socket;
 
-      /* QR Code */
+      /* QR Code — persiste no banco para sobreviver a fechar/reabrir e F5 */
       socket.on('qrCode', (data) => {
         if (data.session !== session.id) return;
         setQrImage(data.data);
         setQrPhase('qr');
         startQrTimer();
+        const expiresAt = new Date(Date.now() + 60_000).toISOString();
+        sessionsService.update(session.id, {
+          status: 'qr',
+          qr_image: data.data,
+          qr_expires_at: expiresAt,
+        }).catch(() => {});
       });
 
       /* Pairing Code */
@@ -143,7 +162,7 @@ export default function ConnectPanel({ session, onClose, onConnected, onAbort })
         startCodeTimer();
       });
 
-      /* Sessão conectada (ambos os modos) */
+      /* Sessão conectada */
       socket.on('session-logged', (status) => {
         if (status.session !== session.id) return;
         clearInterval(qrTimerRef.current);
@@ -164,7 +183,8 @@ export default function ConnectPanel({ session, onClose, onConnected, onAbort })
   }, [session.id]);
 
   const handleClose = () => {
-    if (phaseRef.current !== 'connected') onAbort?.(session.id);
+    // Não chama onAbort automaticamente — o usuário está apenas fechando o painel,
+    // não desistindo da conexão. O QR permanece válido no banco.
     onClose();
   };
 
@@ -282,7 +302,6 @@ export default function ConnectPanel({ session, onClose, onConnected, onAbort })
       {/* ── Aba Código ── */}
       {mode === 'code' && (
         <>
-          {/* Estado: aguardando número */}
           {(codePhase === 'idle' || codePhase === 'loading') && (
             <div style={{ padding: '16px 16px 0' }}>
               <div style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 12, lineHeight: 1.5 }}>
@@ -313,7 +332,6 @@ export default function ConnectPanel({ session, onClose, onConnected, onAbort })
             </div>
           )}
 
-          {/* Estado: código recebido */}
           {codePhase === 'code' && (
             <div className="pair-code">
               <div style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 4 }}>
@@ -331,7 +349,6 @@ export default function ConnectPanel({ session, onClose, onConnected, onAbort })
             </div>
           )}
 
-          {/* Estado: conectado */}
           {codePhase === 'connected' && (
             <div style={{ padding: 16, textAlign: 'center', color: 'var(--accent)' }}>
               <Ic.PhonePlugged style={{ width: 36, height: 36, margin: '20px auto 10px' }}/>
@@ -339,7 +356,6 @@ export default function ConnectPanel({ session, onClose, onConnected, onAbort })
             </div>
           )}
 
-          {/* Instruções — sempre visíveis na aba de código */}
           {codePhase !== 'connected' && (
             <div className="instructions" style={{ marginTop: codePhase === 'idle' || codePhase === 'loading' ? 16 : 0 }}>
               <h5>Onde digitar o código</h5>

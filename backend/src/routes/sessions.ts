@@ -159,27 +159,20 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
       const fields = body as Record<string, unknown>;
       const allowed = ['name','phone','status','tag','messages_today','last_activity','webhook','qr_image','qr_expires_at'] as const;
 
-      const updates: string[] = [];
-      const values: unknown[] = [];
-
+      const patch: Record<string, unknown> = {};
       for (const key of allowed) {
-        if (key in fields) {
-          updates.push(key);
-          values.push(fields[key]);
-        }
+        if (key in fields) patch[key] = fields[key];
       }
 
-      if (updates.length === 0) {
+      if (Object.keys(patch).length === 0) {
         set.status = 400;
         return { error: 'Nenhum campo para atualizar' };
       }
 
-      const setParts = updates.map((col, i) => sql`${sql(col)} = ${values[i] as string}`);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const setClause = (sql as any).join(setParts, sql`, `);
+      // sql(patch) gera "col1 = $1, col2 = $2, ..." de forma segura (postgres.js 3.x)
       const [updated] = await sql`
         UPDATE sessions
-        SET ${setClause}
+        SET ${sql(patch)}
         WHERE id = ${params.id}
           AND user_id = ${userId}
         RETURNING

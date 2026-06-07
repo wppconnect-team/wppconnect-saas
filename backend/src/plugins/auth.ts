@@ -5,19 +5,24 @@ const JWT_SECRET = process.env.JWT_SECRET ?? 'dev-secret-change-in-production';
 
 export const authPlugin = new Elysia({ name: 'auth-plugin' })
   .use(jwt({ name: 'jwt', secret: JWT_SECRET }))
-  .derive({ as: 'scoped' }, async ({ jwt, cookie: { auth }, error }) => {
-    const token = auth?.value;
-    if (!token) return error(401, { error: 'Não autenticado' });
+  .derive({ as: 'scoped' }, async ({ jwt, cookie: { auth } }) => {
+    const token = auth?.value as string | undefined;
+    if (!token) return { userId: '', userEmail: '' };
 
     const payload = await jwt.verify(token);
     if (!payload) {
-      // Cookie existe mas é inválido — limpa
       auth.remove();
-      return error(401, { error: 'Sessão expirada' });
+      return { userId: '', userEmail: '' };
     }
 
     return {
-      userId:    (payload.sub   ?? '') as string,
-      userEmail: (payload.email ?? '') as string,
+      userId:    String(payload.sub   ?? ''),
+      userEmail: String((payload as Record<string, unknown>).email ?? ''),
     };
+  })
+  .onBeforeHandle({ as: 'scoped' }, ({ userId, set }) => {
+    if (!userId) {
+      set.status = 401;
+      return { error: 'Não autenticado' };
+    }
   });

@@ -102,7 +102,7 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
       const token = auth?.value;
       if (!token) { set.status = 401; return { error: 'Não autenticado' }; }
 
-      const payload = await jwt.verify(token);
+      const payload = await jwt.verify(token as string);
       if (!payload) {
         auth.remove();
         set.status = 401;
@@ -186,14 +186,14 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
   // PATCH /api/auth/preferences — salvar preferências de UI do usuário
   .patch('/preferences',
     async ({ body, cookie: { auth }, jwt, set }) => {
-      const token = auth?.value;
+      const token = auth?.value as string | undefined;
       if (!token) { set.status = 401; return { error: 'Não autenticado' }; }
       const payload = await jwt.verify(token);
       if (!payload) { auth.remove(); set.status = 401; return { error: 'Sessão expirada' }; }
 
       const [user] = await sql<{ preferences: Record<string,unknown> }[]>`
         UPDATE users
-        SET preferences = preferences || ${sql.json(body as Record<string,unknown>)}
+        SET preferences = preferences || ${sql.json(body as Parameters<typeof sql.json>[0])}
         WHERE id = ${payload.sub as string}
         RETURNING preferences
       `;

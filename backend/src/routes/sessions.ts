@@ -99,7 +99,7 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
           'qr',
           ${wppToken},
           ${webhook ?? ''},
-          ${proxy ? sql.json(proxy as Record<string, unknown>) : null},
+          ${proxy ? sql.json(proxy as Parameters<typeof sql.json>[0]) : null},
           ${userId}
         )
         RETURNING
@@ -174,10 +174,12 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
         return { error: 'Nenhum campo para atualizar' };
       }
 
-      const setParts = updates.map((col, i) => sql`${sql(col)} = ${values[i]}`);
+      const setParts = updates.map((col, i) => sql`${sql(col)} = ${values[i] as string}`);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const setClause = (sql as any).join(setParts, sql`, `);
       const [updated] = await sql`
         UPDATE sessions
-        SET ${sql.join(setParts, sql`, `)}
+        SET ${setClause}
         WHERE id = ${params.id}
           AND user_id = ${userId}
         RETURNING

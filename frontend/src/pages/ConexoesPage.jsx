@@ -15,9 +15,6 @@ export default function ConexoesPage({ toast }) {
   const [search, setSearch]         = React.useState('');
   const [selected, setSelected]     = React.useState(new Set());
   const [activeId, setActiveId]     = React.useState(null);
-  const [mode, setMode]             = React.useState('qr');
-  const [qrVariant, setQrVariant]   = React.useState(1);
-  const [timer, setTimer]           = React.useState(45);
   const [modalOpen, setModalOpen]   = React.useState(false);
   const [qrSession, setQrSession]   = React.useState(null);
   const [page, setPage]             = React.useState(1);
@@ -34,15 +31,6 @@ export default function ConexoesPage({ toast }) {
 
   // Reset página ao filtrar/buscar
   React.useEffect(() => setPage(1), [filter, search]);
-
-  // QR countdown
-  React.useEffect(() => {
-    const id = setInterval(() => setTimer(t => {
-      if (t <= 1) { setQrVariant(v => v + 1); return 45; }
-      return t - 1;
-    }), 1000);
-    return () => clearInterval(id);
-  }, []);
 
   const counts = React.useMemo(() => ({
     all:       sessions.length,
@@ -341,11 +329,18 @@ export default function ConexoesPage({ toast }) {
         {activeSession && (
           <div className="conexoes-panel">
             <ConnectPanel
+              key={activeSession.id}
               session={activeSession}
-              mode={mode} setMode={setMode}
-              qrVariant={qrVariant} timer={timer}
-              onRefresh={() => { setQrVariant(v => v + 1); setTimer(45); toast('Novo QR gerado'); }}
               onClose={() => setActiveId(null)}
+              onConnected={(id) => {
+                setSessions(list => list.map(s => s.id === id ? { ...s, status: 'connected' } : s));
+                sessionsService.update(id, { status: 'connected', qr_image: null, qr_expires_at: null }).catch(() => {});
+                toast(`Sessão conectada com sucesso`);
+              }}
+              onAbort={(id) => {
+                setSessions(list => list.map(s => s.id === id ? { ...s, status: 'offline' } : s));
+                sessionsService.update(id, { status: 'offline', qr_image: null, qr_expires_at: null }).catch(() => {});
+              }}
             />
           </div>
         )}

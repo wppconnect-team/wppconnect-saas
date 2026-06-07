@@ -80,7 +80,15 @@ export default function App() {
   const [toasts, setToasts] = React.useState([]);
   const [authed, setAuthed]             = React.useState(false);
   const [authChecked, setAuthChecked]   = React.useState(false);
-  const [sidebarOpen, setSidebarOpen]   = React.useState(false);
+  const [sidebarOpen, setSidebarOpen]       = React.useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = React.useState(
+    () => localStorage.getItem('sidebar_collapsed') === 'true'
+  );
+
+  const toggleSidebarCollapse = () => setSidebarCollapsed(c => {
+    localStorage.setItem('sidebar_collapsed', String(!c));
+    return !c;
+  });
 
   // Salva preferências no banco com debounce de 600ms
   const prefsTimerRef = React.useRef(null);
@@ -197,9 +205,10 @@ export default function App() {
   };
 
   return (
-    <div className="app">
+    <div className={"app" + (sidebarCollapsed ? " sidebar-collapsed" : "")}>
       <Sidebar currentNav={currentNav} onNav={navigate} onLogout={logout}
-        open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+        open={sidebarOpen} onClose={() => setSidebarOpen(false)}
+        collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebarCollapse}/>
       <div className="main">
         <AppTopbar nav={currentNav} theme={theme} setTheme={setTheme}
           onMenuClick={() => setSidebarOpen(s => !s)}/>

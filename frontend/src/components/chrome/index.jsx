@@ -2,7 +2,7 @@ import React from 'react';
 import Ic from '../icons';
 import { NAV_MAIN, NAV_DEV, NAV_ACCT } from '../../data';
 
-export function Sidebar({ currentNav, onNav, onLogout, open, onClose }) {
+export function Sidebar({ currentNav, onNav, onLogout, open, onClose, collapsed, onToggleCollapse }) {
   const handleNav = (id) => { onNav(id); onClose?.(); };
 
   const Section = ({ title, items }) => (
@@ -14,6 +14,7 @@ export function Sidebar({ currentNav, onNav, onLogout, open, onClose }) {
         return (
           <button key={item.id}
             className={"nav-item" + (active ? " active" : "")}
+            title={collapsed ? item.label : undefined}
             onClick={() => handleNav(item.id)}>
             <Icon className="icon"/>
             <span>{item.label}</span>
@@ -27,13 +28,20 @@ export function Sidebar({ currentNav, onNav, onLogout, open, onClose }) {
   return (
     <>
       {open && <div className="sidebar-overlay" onClick={onClose}/>}
-      <aside className={"sidebar" + (open ? " open" : "")}>
+      <aside className={"sidebar" + (open ? " open" : "") + (collapsed ? " collapsed" : "")}>
         <div className="brand">
           <div className="brand-mark">Wpp</div>
-          <div className="brand-name">
-            Wppconnect
-            <small>workspace</small>
-          </div>
+          {!collapsed && (
+            <div className="brand-name">
+              Wppconnect
+              <small>workspace</small>
+            </div>
+          )}
+          <button className="sidebar-collapse-btn"
+            onClick={onToggleCollapse}
+            title={collapsed ? 'Expandir menu' : 'Recolher menu'}>
+            {collapsed ? <Ic.ChevronRight style={{ width: 13, height: 13 }}/> : <Ic.ChevronLeft style={{ width: 13, height: 13 }}/>}
+          </button>
         </div>
 
         <Section title="Principal" items={NAV_MAIN} />
@@ -42,7 +50,8 @@ export function Sidebar({ currentNav, onNav, onLogout, open, onClose }) {
 
         <div className="sidebar-footer">
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <button className="user-chip" style={{ flex: 1, minWidth: 0, width: 'auto' }}>
+            <button className="user-chip" style={{ flex: 1, minWidth: 0, width: 'auto' }}
+              title={collapsed ? 'Perfil' : undefined}>
               <div className="avatar">MR</div>
               <div className="info">
                 <div className="name">Marcos Ribeiro</div>

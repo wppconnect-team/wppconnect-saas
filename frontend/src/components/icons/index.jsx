@@ -142,6 +142,7 @@ Ic.ChartBar = svg(<>
 </>);
 
 Ic.ChevronRight = svg(<polyline points="9 18 15 12 9 6"/>);
+Ic.ChevronLeft  = svg(<polyline points="15 18 9 12 15 6"/>);
 Ic.Group = svg(<>
   <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
   <circle cx="9" cy="7" r="4"/>

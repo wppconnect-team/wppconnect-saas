@@ -183,7 +183,9 @@ button { font-family: inherit; cursor: pointer; border: 0; background: none; col
   height: 100vh;
   height: 100dvh; /* iOS Safari: dynamic viewport (exclui barra do browser) */
   min-height: 720px;
+  transition: grid-template-columns 0.2s ease;
 }
+.app.sidebar-collapsed { grid-template-columns: 52px 1fr; }
 
 /* ------------ Sidebar ------------ */
 .sidebar {
@@ -272,6 +274,46 @@ button { font-family: inherit; cursor: pointer; border: 0; background: none; col
   background: white;
   color: var(--accent-ink);
 }
+
+/* Sidebar collapse toggle button */
+.sidebar-collapse-btn {
+  margin-left: auto;
+  flex-shrink: 0;
+  width: 22px; height: 22px;
+  display: flex; align-items: center; justify-content: center;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--ink-4);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.sidebar-collapse-btn:hover { background: var(--panel-2); color: var(--ink-1); }
+
+/* Collapsed state */
+.sidebar.collapsed {
+  padding: 14px 8px;
+  overflow: visible;
+}
+.sidebar.collapsed .brand {
+  justify-content: center;
+  padding: 8px 4px 14px;
+}
+.sidebar.collapsed .brand-name { display: none; }
+.sidebar.collapsed .sidebar-collapse-btn { margin-left: 0; margin-top: 6px; }
+.sidebar.collapsed .nav-section { display: none; }
+.sidebar.collapsed .nav-item {
+  justify-content: center;
+  padding: 8px 0;
+  width: 100%;
+}
+.sidebar.collapsed .nav-item span:not(.dot) { display: none; }
+.sidebar.collapsed .nav-item .count { display: none; }
+.sidebar.collapsed .nav-item .icon { width: 18px; height: 18px; opacity: 1; }
+.sidebar.collapsed .sidebar-footer { align-items: center; }
+.sidebar.collapsed .sidebar-footer > div { justify-content: center; gap: 0; flex-direction: column; }
+.sidebar.collapsed .user-chip { justify-content: center; padding: 6px; }
+.sidebar.collapsed .user-chip .info { display: none; }
 
 .sidebar-footer {
   margin-top: auto;
@@ -878,22 +920,35 @@ button { font-family: inherit; cursor: pointer; border: 0; background: none; col
   margin: 4px 16px 16px;
   text-align: center;
 }
-.pair-code .digits {
-  display: inline-flex;
-  gap: 6px;
-  margin: 14px 0 10px;
+.pair-digits {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 10px;
+}
+.pair-group {
+  display: flex;
+  flex: 1;
+  gap: 5px;
+}
+.pair-sep {
+  font-size: 22px;
+  font-weight: 300;
+  color: var(--ink-3);
+  flex-shrink: 0;
 }
 .pair-code .digit {
-  width: 34px; height: 42px;
+  flex: 1;
+  height: 46px;
   display: grid;
   place-items: center;
   background: var(--panel-2);
   border: 1px solid var(--border);
   border-radius: 8px;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 19px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--ink-1);
 }
 
 @keyframes wpp-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
@@ -1382,6 +1437,8 @@ button { font-family: inherit; cursor: pointer; border: 0; background: none; col
   }
 
   .hamburger-btn { display: grid; }
+  .sidebar-collapse-btn { display: none; }
+  .app.sidebar-collapsed { grid-template-columns: 1fr; }
 
   .stats, .stats.stats-3 { grid-template-columns: repeat(2, 1fr); }
   .plan-grid { grid-template-columns: repeat(2, 1fr); }

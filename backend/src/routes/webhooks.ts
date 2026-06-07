@@ -107,6 +107,45 @@ export const webhookRoutes = new Elysia({ prefix: '/api/webhooks' })
     }
   )
 
+  // POST /api/webhooks/:id/test — dispara uma requisição de teste
+  .post('/:id/test',
+    async ({ params, set, userId }) => {
+      const [webhook] = await sql<{ id: number; url: string }[]>`
+        SELECT id, url FROM webhooks
+        WHERE id = ${Number(params.id)} AND user_id = ${userId}
+      `;
+      if (!webhook) { set.status = 404; return { error: 'Webhook não encontrado' }; }
+
+      const payload = {
+        event:      'test.ping',
+        session_id: 'test',
+        timestamp:  Math.floor(Date.now() / 1000),
+        test:       true,
+      };
+
+      try {
+        const res = await fetch(webhook.url, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json', 'X-WppConnect-Test': '1' },
+          body:    JSON.stringify(payload),
+          signal:  AbortSignal.timeout(10_000),
+        });
+        const body = await res.text().catch(() => '');
+
+        await sql`
+          UPDATE webhooks
+          SET last_status = ${res.status}, last_at = NOW()
+          WHERE id = ${Number(params.id)} AND user_id = ${userId}
+        `;
+
+        return { status: res.status, ok: res.ok, body: body.slice(0, 500) };
+      } catch (err) {
+        set.status = 502;
+        return { error: 'Não foi possível conectar ao endpoint', detail: String(err) };
+      }
+    }
+  )
+
   // DELETE /api/webhooks/:id
   .delete('/:id',
     async ({ params, set, userId }) => {

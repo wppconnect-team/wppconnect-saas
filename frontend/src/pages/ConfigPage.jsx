@@ -1,5 +1,6 @@
 import React from 'react';
 import Ic from '../components/icons';
+import { authService } from '../services/auth';
 
 const SECTIONS = [
   { id: 'workspace', label: 'Workspace',       icon: 'Cog'      },
@@ -50,10 +51,55 @@ function Card({ title, description, children, danger }) {
   );
 }
 
-export default function ConfigPage({ toast }) {
-  const [sec, setSec]     = React.useState('workspace');
-  const [prefs, setPrefs] = React.useState({ emails: true, autoreply: true, twofa: false, notifications: true, sso: false });
-  const toggle = key => setPrefs(p => ({ ...p, [key]: !p[key] }));
+const PREF_DEFAULTS = { emails: true, autoreply: true, twofa: false, notifications: true, sso: false };
+
+export default function ConfigPage({ toast, user }) {
+  const [sec, setSec] = React.useState('workspace');
+
+  // Workspace fields — inicializados de user.preferences se disponível
+  const [wsName, setWsName]   = React.useState(user?.preferences?.wsName ?? 'Wppconnect Demo');
+  const [wsSlug, setWsSlug]   = React.useState(user?.preferences?.wsSlug ?? 'wppconnect-demo');
+  const [wsTz, setWsTz]       = React.useState(user?.preferences?.wsTz   ?? 'brt');
+  const [wsSaving, setWsSaving] = React.useState(false);
+
+  // Toggles de preferências — merge com defaults para campos ausentes
+  const [prefs, setPrefs] = React.useState(() => ({
+    ...PREF_DEFAULTS,
+    ...(user?.preferences ?? {}),
+  }));
+
+  // Sincroniza quando user?.preferences chega (login async)
+  React.useEffect(() => {
+    if (!user?.preferences) return;
+    setPrefs(p => ({ ...PREF_DEFAULTS, ...user.preferences, ...p }));
+    if (user.preferences.wsName) setWsName(user.preferences.wsName);
+    if (user.preferences.wsSlug) setWsSlug(user.preferences.wsSlug);
+    if (user.preferences.wsTz)   setWsTz(user.preferences.wsTz);
+  }, [user?.preferences]);
+
+  const toggle = async (key) => {
+    const next = !prefs[key];
+    setPrefs(p => ({ ...p, [key]: next }));
+    try {
+      await authService.updatePreferences({ [key]: next });
+    } catch {
+      // Reverte em caso de falha
+      setPrefs(p => ({ ...p, [key]: !next }));
+      toast?.('Erro ao salvar preferência', 'error');
+    }
+  };
+
+  const saveWorkspace = async () => {
+    setWsSaving(true);
+    try {
+      await authService.updatePreferences({ wsName, wsSlug, wsTz });
+      toast?.('Alterações salvas!');
+    } catch {
+      toast?.('Erro ao salvar configurações', 'error');
+    } finally {
+      setWsSaving(false);
+    }
+  };
 
   return (
     <>
@@ -90,24 +136,30 @@ export default function ConfigPage({ toast }) {
               <Card title="Informações do workspace" description="Exibidas em emails, relatórios e integrações.">
                 <div className="field">
                   <label>Nome do workspace</label>
-                  <input defaultValue="Wppconnect Demo"/>
+                  <input value={wsName} onChange={e => setWsName(e.target.value)}/>
                 </div>
                 <div className="field">
                   <label>Slug</label>
-                  <input defaultValue="wppconnect-demo" className="mono"/>
-                  <div className="hint">URL pública: wppconnect.io/wppconnect-demo</div>
+                  <input value={wsSlug} onChange={e => setWsSlug(e.target.value)} className="mono"/>
+                  <div className="hint">URL pública: wppconnect.io/{wsSlug}</div>
                 </div>
                 <div className="field">
                   <label>Fuso horário</label>
-                  <select defaultValue="brt">
+                  <select value={wsTz} onChange={e => setWsTz(e.target.value)}>
                     <option value="brt">America/Sao_Paulo (BRT −3)</option>
-                    <option>America/New_York (EST −5)</option>
-                    <option>Europe/Lisbon (WET +0)</option>
+                    <option value="est">America/New_York (EST −5)</option>
+                    <option value="wet">Europe/Lisbon (WET +0)</option>
                   </select>
                 </div>
                 <div style={{ marginTop: 16, display: 'flex', gap: 8 }}>
-                  <button className="btn primary" onClick={() => toast('Alterações salvas!')}>Salvar</button>
-                  <button className="btn secondary">Cancelar</button>
+                  <button className="btn primary" onClick={saveWorkspace} disabled={wsSaving}>
+                    {wsSaving ? 'Salvando…' : 'Salvar'}
+                  </button>
+                  <button className="btn secondary" onClick={() => {
+                    setWsName(user?.preferences?.wsName ?? 'Wppconnect Demo');
+                    setWsSlug(user?.preferences?.wsSlug ?? 'wppconnect-demo');
+                    setWsTz(user?.preferences?.wsTz ?? 'brt');
+                  }}>Cancelar</button>
                 </div>
               </Card>
 
@@ -144,7 +196,7 @@ export default function ConfigPage({ toast }) {
                 </div>
               ))}
               <div style={{ marginTop: 16 }}>
-                <button className="btn secondary" onClick={() => toast('Abrindo convite…')}><Ic.Plus/> Convidar membro</button>
+                <button className="btn secondary" onClick={() => toast?.('Abrindo convite…')}><Ic.Plus/> Convidar membro</button>
               </div>
             </Card>
           )}
@@ -165,8 +217,8 @@ export default function ConfigPage({ toast }) {
                 ))}
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn primary"    onClick={() => toast('Abrindo upgrade…')}>Upgrade para Business</button>
-                <button className="btn secondary"  onClick={() => toast('Portal de assinatura…')}>Gerenciar assinatura</button>
+                <button className="btn primary"   onClick={() => toast?.('Abrindo upgrade…')}>Upgrade para Business</button>
+                <button className="btn secondary" onClick={() => toast?.('Portal de assinatura…')}>Gerenciar assinatura</button>
               </div>
             </Card>
           )}
@@ -179,13 +231,13 @@ export default function ConfigPage({ toast }) {
                   <Toggle on={prefs.twofa} onChange={() => toggle('twofa')}/>
                 </SettingsRow>
                 <SettingsRow label="SSO obrigatório" description="Bloquear login por senha — disponível no plano Enterprise">
-                  <Toggle on={prefs.sso} onChange={() => { toast('SSO disponível no plano Enterprise'); }}/>
+                  <Toggle on={prefs.sso} onChange={() => toast?.('SSO disponível no plano Enterprise')}/>
                 </SettingsRow>
               </Card>
 
               <Card title="Zona de perigo" description="Ações irreversíveis no workspace." danger>
                 <SettingsRow label="Deletar workspace" description="Remove sessões, contatos, histórico e todos os membros.">
-                  <button className="btn danger" onClick={() => toast('Ação bloqueada no modo demo')}>Deletar</button>
+                  <button className="btn danger" onClick={() => toast?.('Ação bloqueada no modo demo')}>Deletar</button>
                 </SettingsRow>
               </Card>
             </>

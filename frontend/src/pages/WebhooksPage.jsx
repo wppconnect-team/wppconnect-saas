@@ -2,6 +2,11 @@ import React from 'react';
 import Ic from '../components/icons';
 import { webhooksService } from '../services/webhooks';
 
+const ALL_EVENTS = [
+  'message.received', 'message.sent',
+  'session.connected', 'session.disconnected', 'qrcode.updated',
+];
+
 const PAYLOAD_EXAMPLE = `{
   "event": "message.received",
   "session_id": "wa_01",
@@ -13,14 +18,90 @@ const PAYLOAD_EXAMPLE = `{
   }
 }`;
 
+function WebhookModal({ webhook, onClose, onSave }) {
+  const [url, setUrl]         = React.useState(webhook?.url ?? '');
+  const [events, setEvents]   = React.useState(webhook?.events ?? []);
+  const [status, setStatus]   = React.useState(webhook?.status ?? 'ativo');
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError]     = React.useState(null);
+
+  const toggle = (ev) =>
+    setEvents(p => p.includes(ev) ? p.filter(x => x !== ev) : [...p, ev]);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!url.trim() || events.length === 0) return;
+    setLoading(true); setError(null);
+    try {
+      const res = webhook
+        ? await webhooksService.update(webhook.id, { url: url.trim(), events, status })
+        : await webhooksService.create({ url: url.trim(), events });
+      onSave(res.data, !!webhook);
+    } catch (err) {
+      setError(err?.error ?? 'Erro ao salvar endpoint');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <form className="modal" onClick={e => e.stopPropagation()} onSubmit={submit}>
+        <div className="modal-head">
+          <h3>{webhook ? 'Editar endpoint' : 'Novo endpoint'}</h3>
+          <p>Configure a URL que receberá os eventos em tempo real.</p>
+        </div>
+        <div className="modal-body">
+          <div className="field">
+            <label>URL do endpoint</label>
+            <input autoFocus type="url" value={url} onChange={e => setUrl(e.target.value)}
+              placeholder="https://seu-backend.com/webhook" required/>
+          </div>
+          <div className="field">
+            <label>Eventos</label>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+              {ALL_EVENTS.map(ev => (
+                <label key={ev} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 13 }}>
+                  <input type="checkbox" checked={events.includes(ev)} onChange={() => toggle(ev)}/>
+                  <span className="chip mono" style={{ fontSize: 11 }}>{ev}</span>
+                </label>
+              ))}
+            </div>
+            {events.length === 0 && (
+              <div style={{ fontSize: 12, color: 'var(--rose-ink)', marginTop: 4 }}>Selecione ao menos um evento</div>
+            )}
+          </div>
+          {webhook && (
+            <div className="field">
+              <label>Status</label>
+              <select value={status} onChange={e => setStatus(e.target.value)}>
+                <option value="ativo">Ativo</option>
+                <option value="inativo">Inativo</option>
+              </select>
+            </div>
+          )}
+          {error && <div style={{ color: 'var(--rose-ink)', fontSize: 13, marginTop: 8 }}>{error}</div>}
+        </div>
+        <div className="modal-foot">
+          <button type="button" className="btn secondary" onClick={onClose} disabled={loading}>Cancelar</button>
+          <button type="submit" className="btn primary" disabled={loading || events.length === 0 || !url.trim()}>
+            <Ic.Check/> {loading ? 'Salvando…' : (webhook ? 'Salvar alterações' : 'Criar endpoint')}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 export default function WebhooksPage({ toast }) {
-  const [webhooks, setWebhooks]       = React.useState([]);
-  const [stats, setStats]             = React.useState({ total: 0, ativos: 0, falhando: 0, avgRate: 0 });
-  const [loading, setLoading]         = React.useState(true);
-  const [filter, setFilter]           = React.useState('all');
-  const [query, setQuery]             = React.useState('');
-  const [showPayload, setShowPayload] = React.useState(false);
-  const [menuId, setMenuId]           = React.useState(null);
+  const [webhooks, setWebhooks]         = React.useState([]);
+  const [stats, setStats]               = React.useState({ total: 0, ativos: 0, falhando: 0, avgRate: 0 });
+  const [loading, setLoading]           = React.useState(true);
+  const [filter, setFilter]             = React.useState('all');
+  const [query, setQuery]               = React.useState('');
+  const [showPayload, setShowPayload]   = React.useState(false);
+  const [menuId, setMenuId]             = React.useState(null);
+  const [modalWebhook, setModalWebhook] = React.useState(null); // null=fechado | 'new' | obj de webhook
 
   React.useEffect(() => {
     const close = () => setMenuId(null);
@@ -28,26 +109,51 @@ export default function WebhooksPage({ toast }) {
     return () => window.removeEventListener('click', close);
   }, []);
 
-  React.useEffect(() => {
+  const refetch = React.useCallback(() => {
     setLoading(true);
     webhooksService.list()
-      .then(res => {
-        setWebhooks(res.data);
-        setStats(res.stats);
-      })
+      .then(res => { setWebhooks(res.data); setStats(res.stats); })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
 
+  React.useEffect(() => { refetch(); }, [refetch]);
+
+  const handleSave = (saved, isEdit) => {
+    setModalWebhook(null);
+    toast?.(isEdit ? 'Endpoint atualizado' : 'Endpoint criado');
+    refetch();
+  };
+
   const handleDelete = async (id) => {
+    setMenuId(null);
     try {
       await webhooksService.remove(id);
-      setWebhooks(l => l.filter(w => w.id !== id));
       toast?.('Endpoint removido');
+      refetch();
     } catch {
       toast?.('Erro ao remover endpoint', 'error');
     }
+  };
+
+  const handleTest = async (id) => {
     setMenuId(null);
+    toast?.('Enviando requisição de teste…');
+    try {
+      const res = await webhooksService.test(id);
+      setWebhooks(list =>
+        list.map(w => w.id === id ? { ...w, lastStatus: res.status, lastAt: 'agora' } : w)
+      );
+      toast?.(res.ok ? `Teste OK · HTTP ${res.status}` : `Falhou · HTTP ${res.status}`, res.ok ? 'success' : 'error');
+    } catch (err) {
+      toast?.(err?.error ?? 'Erro ao testar endpoint', 'error');
+    }
+  };
+
+  const handleViewLogs = (w) => {
+    setMenuId(null);
+    sessionStorage.setItem('logs_source_filter', w.url);
+    window.location.hash = 'logs';
   };
 
   const visible = webhooks.filter(w => {
@@ -64,12 +170,11 @@ export default function WebhooksPage({ toast }) {
           <div className="page-sub">Receba eventos em tempo real no seu backend ou serviços externos.</div>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          <button className="btn secondary" onClick={() => toast?.('Abrindo documentação…')}><Ic.Doc/> Docs</button>
-          <button className="btn primary"   onClick={() => toast?.('Formulário de webhook…')}><Ic.Plus/> Novo endpoint</button>
+          <button className="btn secondary" onClick={() => setShowPayload(v => !v)}><Ic.Doc/> Payload</button>
+          <button className="btn primary" onClick={() => setModalWebhook('new')}><Ic.Plus/> Novo endpoint</button>
         </div>
       </div>
 
-      {/* Métricas */}
       <div className="stats" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
         {[
           { label: 'Total',      value: String(stats.total).padStart(2,'0'),              icon: 'Webhook',  cls: 'total',                                    delta: 'endpoints'   },
@@ -91,7 +196,6 @@ export default function WebhooksPage({ toast }) {
         })}
       </div>
 
-      {/* Listagem */}
       <div className="card-panel" style={{ padding: 0 }}>
         <div style={{ padding: 12, display: 'flex', gap: 8, alignItems: 'center', borderBottom: '1px solid var(--border)' }}>
           <div className="search" style={{ width: 300 }}>
@@ -119,18 +223,12 @@ export default function WebhooksPage({ toast }) {
           </tr></thead>
           <tbody>
             {loading && (
-              <tr>
-                <td colSpan={6} style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--ink-4)' }}>
-                  Carregando…
-                </td>
-              </tr>
+              <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--ink-4)' }}>Carregando…</td></tr>
             )}
             {!loading && visible.length === 0 && (
-              <tr>
-                <td colSpan={6} style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--ink-4)' }}>
-                  Nenhum endpoint cadastrado
-                </td>
-              </tr>
+              <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--ink-4)' }}>
+                {query ? `Nenhum resultado para "${query}"` : 'Nenhum endpoint cadastrado'}
+              </td></tr>
             )}
             {!loading && visible.map(w => (
               <tr key={w.id}>
@@ -176,9 +274,9 @@ export default function WebhooksPage({ toast }) {
                     <button className="kbd-btn" onClick={e => { e.stopPropagation(); setMenuId(m => m === w.id ? null : w.id); }}><Ic.Dots/></button>
                     {menuId === w.id && (
                       <div className="dropdown" style={{ right: 0, left: 'auto', zIndex: 20 }} onClick={e => e.stopPropagation()}>
-                        <button className="dropdown-item" onClick={() => { toast?.('Testando…'); setMenuId(null); }}><Ic.Send className="icon"/>Testar</button>
-                        <button className="dropdown-item" onClick={() => { toast?.('Abrindo logs…'); setMenuId(null); }}><Ic.List className="icon"/>Ver logs</button>
-                        <button className="dropdown-item" onClick={() => { toast?.('Editando…'); setMenuId(null); }}><Ic.Cog className="icon"/>Editar</button>
+                        <button className="dropdown-item" onClick={() => handleTest(w.id)}><Ic.Send className="icon"/>Testar</button>
+                        <button className="dropdown-item" onClick={() => handleViewLogs(w)}><Ic.List className="icon"/>Ver logs</button>
+                        <button className="dropdown-item" onClick={() => { setMenuId(null); setModalWebhook(w); }}><Ic.Cog className="icon"/>Editar</button>
                         <div className="dropdown-sep"/>
                         <button className="dropdown-item danger" onClick={() => handleDelete(w.id)}><Ic.Trash className="icon"/>Remover</button>
                       </div>
@@ -191,7 +289,6 @@ export default function WebhooksPage({ toast }) {
         </table>
       </div>
 
-      {/* Payload example */}
       <div className="section-head" style={{ cursor: 'pointer', marginTop: 24 }} onClick={() => setShowPayload(v => !v)}>
         <h3>Exemplo de payload</h3>
         <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>{showPayload ? '▲ Ocultar' : '▼ Mostrar'}</span>
@@ -200,6 +297,14 @@ export default function WebhooksPage({ toast }) {
         <div className="codeblock" style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12.5, lineHeight: 1.75, whiteSpace: 'pre', overflowX: 'auto', padding: '14px 16px' }}>
           {PAYLOAD_EXAMPLE}
         </div>
+      )}
+
+      {modalWebhook && (
+        <WebhookModal
+          webhook={modalWebhook === 'new' ? null : modalWebhook}
+          onClose={() => setModalWebhook(null)}
+          onSave={handleSave}
+        />
       )}
     </>
   );

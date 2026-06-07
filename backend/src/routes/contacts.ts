@@ -78,6 +78,39 @@ export const contactRoutes = new Elysia({ prefix: '/api/contacts' })
     }
   )
 
+  // PUT /api/contacts/:id
+  .put('/:id',
+    async ({ params, body, set, userId }) => {
+      const { name, phone, tags, status } = body;
+
+      const [updated] = await sql`
+        UPDATE contacts
+        SET
+          name   = COALESCE(${name   ?? null}::text,    name),
+          phone  = COALESCE(${phone  ?? null}::text,    phone),
+          tags   = COALESCE(${tags   ?? null}::text[],  tags),
+          status = COALESCE(${status ?? null}::text,    status)
+        WHERE id = ${Number(params.id)}
+          AND user_id = ${userId}
+        RETURNING
+          id, name, phone, tags, status,
+          messages_count   AS "messagesCount",
+          last_interaction AS "lastInteraction"
+      `;
+
+      if (!updated) { set.status = 404; return { error: 'Contato não encontrado' }; }
+      return { data: updated };
+    },
+    {
+      body: t.Object({
+        name:   t.Optional(t.String()),
+        phone:  t.Optional(t.String()),
+        tags:   t.Optional(t.Array(t.String())),
+        status: t.Optional(t.Union([t.Literal('ativo'), t.Literal('inativo')])),
+      }),
+    }
+  )
+
   // DELETE /api/contacts/:id
   .delete('/:id',
     async ({ params, set, userId }) => {

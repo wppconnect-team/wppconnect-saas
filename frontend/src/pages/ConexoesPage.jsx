@@ -105,7 +105,10 @@ export default function ConexoesPage({ toast }) {
     } else if (action === 'status')     { toast(`Status: ${session.status}`);
     } else if (action === 'configurar') { toast('Abrindo configuração de produtos…');
     } else if (action === 'copy')       { toast('Token copiado');
-    } else if (action === 'logs')       { toast('Abrindo logs da sessão…'); }
+    } else if (action === 'logs') {
+      sessionStorage.setItem('logs_source_filter', session.id);
+      window.location.hash = 'logs';
+    }
   };
 
   const bulkDelete = async () => {

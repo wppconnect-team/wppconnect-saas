@@ -8,7 +8,7 @@ export const logRoutes = new Elysia({ prefix: '/api/logs' })
   // GET /api/logs
   .get('/',
     async ({ query, userId }) => {
-      const { level, search, limit = '100' } = query;
+      const { level, search, source, limit = '100' } = query;
       const take = Math.min(Number(limit), 500);
 
       const rows = await sql<{
@@ -19,7 +19,8 @@ export const logRoutes = new Elysia({ prefix: '/api/logs' })
           created_at AS "createdAt"
         FROM logs
         WHERE user_id = ${userId}
-          AND (${level ?? null}::text IS NULL OR level = ${level ?? null}::text)
+          AND (${level  ?? null}::text IS NULL OR level  = ${level  ?? null}::text)
+          AND (${source ?? null}::text IS NULL OR source ILIKE ${'%' + (source ?? '') + '%'})
           AND (
             ${search ?? null}::text IS NULL
             OR message ILIKE ${'%' + (search ?? '') + '%'}
@@ -48,6 +49,7 @@ export const logRoutes = new Elysia({ prefix: '/api/logs' })
       query: t.Object({
         level:  t.Optional(t.String()),
         search: t.Optional(t.String()),
+        source: t.Optional(t.String()),
         limit:  t.Optional(t.String()),
       }),
     }

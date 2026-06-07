@@ -16,17 +16,28 @@ function formatTime(date) {
 }
 
 export default function LogsPage() {
-  const [rows, setRows]     = React.useState([]);
-  const [counts, setCounts] = React.useState({ total: 0, ok: 0, info: 0, warn: 0, error: 0 });
+  const [rows, setRows]       = React.useState([]);
+  const [counts, setCounts]   = React.useState({ total: 0, ok: 0, info: 0, warn: 0, error: 0 });
   const [loading, setLoading] = React.useState(true);
-  const [filter, setFilter] = React.useState('all');
-  const [query, setQuery]   = React.useState('');
+  const [filter, setFilter]   = React.useState('all');
+  const [query, setQuery]     = React.useState('');
+  const [sourceFilter, setSourceFilter] = React.useState('');
+
+  // Lê filtro de fonte passado por sessionStorage (ex: de Webhooks "Ver logs")
+  React.useEffect(() => {
+    const src = sessionStorage.getItem('logs_source_filter');
+    if (src) {
+      setSourceFilter(src);
+      sessionStorage.removeItem('logs_source_filter');
+    }
+  }, []);
 
   React.useEffect(() => {
     setLoading(true);
     const params = {};
     if (filter !== 'all') params.level = filter;
     if (query) params.search = query;
+    if (sourceFilter) params.source = sourceFilter;
     logsService.list(params)
       .then(res => {
         setRows(res.data);
@@ -34,7 +45,26 @@ export default function LogsPage() {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [filter, query]);
+  }, [filter, query, sourceFilter]);
+
+  const handleExportCSV = () => {
+    const header = ['id','level','message','source','createdAt'];
+    const csvRows = [header, ...rows.map(r => [
+      r.id,
+      r.level,
+      `"${String(r.message).replace(/"/g, '""')}"`,
+      r.source,
+      r.createdAt,
+    ])];
+    const csv  = csvRows.map(r => r.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = 'logs.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const visible = rows;
 
@@ -43,18 +73,27 @@ export default function LogsPage() {
       <div className="page-head">
         <div>
           <h1 className="page-title">Logs</h1>
-          <div className="page-sub">Eventos em tempo real de sessões, webhooks e automações.</div>
+          <div className="page-sub">
+            Eventos em tempo real de sessões, webhooks e automações.
+            {sourceFilter && (
+              <span style={{ marginLeft: 8 }}>
+                <span className="chip mono" style={{ fontSize: 11 }}>{sourceFilter}</span>
+                {' '}
+                <button style={{ fontSize: 11, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-3)', textDecoration: 'underline', padding: 0 }}
+                  onClick={() => setSourceFilter('')}>limpar</button>
+              </span>
+            )}
+          </div>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--ink-3)' }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', animation: 'pulse 2s infinite' }}/>
             ao vivo
           </div>
-          <button className="btn secondary"><Ic.Download/> Exportar</button>
+          <button className="btn secondary" onClick={handleExportCSV}><Ic.Download/> Exportar</button>
         </div>
       </div>
 
-      {/* Métricas */}
       <div className="stats" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
         {[
           { id: 'ok',    label: 'OK',    value: counts.ok,    icon: 'Check',   cls: 'connected' },
@@ -79,7 +118,6 @@ export default function LogsPage() {
         })}
       </div>
 
-      {/* Listagem */}
       <div className="card-panel" style={{ padding: 0 }}>
         <div style={{ padding: 12, display: 'flex', gap: 8, alignItems: 'center', borderBottom: '1px solid var(--border)' }}>
           <div className="search" style={{ width: 320 }}>
@@ -106,18 +144,10 @@ export default function LogsPage() {
           </tr></thead>
           <tbody>
             {loading && (
-              <tr>
-                <td colSpan={4} style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--ink-4)' }}>
-                  Carregando…
-                </td>
-              </tr>
+              <tr><td colSpan={4} style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--ink-4)' }}>Carregando…</td></tr>
             )}
             {!loading && visible.length === 0 && (
-              <tr>
-                <td colSpan={4} style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--ink-4)' }}>
-                  Nenhum log encontrado
-                </td>
-              </tr>
+              <tr><td colSpan={4} style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--ink-4)' }}>Nenhum log encontrado</td></tr>
             )}
             {!loading && visible.slice(0, 50).map(r => {
               const cfg = LEVEL[r.level] || LEVEL.info;

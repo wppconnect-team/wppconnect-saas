@@ -182,7 +182,7 @@ export default function App() {
       case 'webhooks':  return <WebhooksPage  toast={toast}/>;
       case 'api':       return <ApiPage       toast={toast}/>;
       case 'logs':      return <LogsPage      toast={toast}/>;
-      case 'config':    return <ConfigPage    toast={toast}/>;
+      case 'config':    return <ConfigPage    toast={toast} user={user}/>;
       default:          return <DashboardPage toast={toast}/>;
     }
   };

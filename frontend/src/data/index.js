@@ -53,8 +53,9 @@ export const INITIAL_SESSIONS = [
 
 export const NAV_MAIN = [
   { id: 'dashboard', label: 'Dashboard', icon: 'Dashboard' },
-  { id: 'conexoes', label: 'Conexões', icon: 'Link', active: true },
-  { id: 'contatos', label: 'Contatos', icon: 'Users' },
+  { id: 'conexoes',  label: 'Conexões',  icon: 'Link', active: true },
+  { id: 'contatos',  label: 'Contatos',  icon: 'Users' },
+  { id: 'grupos',    label: 'Grupos',    icon: 'Group' },
 ];
 
 export const NAV_DEV = [

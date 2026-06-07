@@ -1,6 +1,9 @@
 import React from 'react';
 import Ic from '../components/icons';
 import { contactsService } from '../services/contacts';
+import Pagination from '../components/pagination';
+
+const PAGE_SIZE = 15;
 
 function ContactModal({ contact, onClose, onSave }) {
   const [name, setName]       = React.useState(contact?.name ?? '');
@@ -78,6 +81,7 @@ export default function ContatosPage({ toast }) {
   const [loading, setLoading]     = React.useState(true);
   const [selected, setSelected]   = React.useState(new Set());
   const [query, setQuery]         = React.useState('');
+  const [page, setPage]           = React.useState(1);
   const [modalContact, setModalContact] = React.useState(null); // null=fechado | 'new' | obj
 
   const refetch = React.useCallback(() => {
@@ -93,6 +97,12 @@ export default function ContatosPage({ toast }) {
   const filtered = contacts.filter(c =>
     c.name.toLowerCase().includes(query.toLowerCase()) || c.phone.includes(query)
   );
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated  = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  React.useEffect(() => { if (page > totalPages) setPage(totalPages); }, [totalPages]);
+  React.useEffect(() => { setPage(1); }, [query]);
 
   const toggle    = (id) => setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const toggleAll = () => setSelected(s => s.size === filtered.length && filtered.length > 0 ? new Set() : new Set(filtered.map(c => c.id)));
@@ -172,7 +182,7 @@ export default function ContatosPage({ toast }) {
       </div>
 
       <div className="card-panel" style={{ padding: 0 }}>
-        <div style={{ padding: 12, display: 'flex', gap: 8, alignItems: 'center', borderBottom: '1px solid var(--border)' }}>
+        <div className="table-toolbar" style={{ padding: 12, display: 'flex', gap: 8, alignItems: 'center', borderBottom: '1px solid var(--border)' }}>
           <div className="search" style={{ width: 320 }}>
             <Ic.Search style={{ color: 'var(--ink-4)' }}/>
             <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar por nome ou telefone…"/>
@@ -180,7 +190,7 @@ export default function ContatosPage({ toast }) {
           <button className="btn ghost"><Ic.Tag/> Tags</button>
           <button className="btn ghost"><Ic.Folder/> Listas</button>
           <div style={{ marginLeft: 'auto', fontSize: 12.5, color: 'var(--ink-3)' }}>
-            {selected.size > 0 ? `${selected.size} selecionados` : `${filtered.length} contatos`}
+            {selected.size > 0 ? `${selected.size} selecionados` : `${filtered.length} contato${filtered.length !== 1 ? 's' : ''}`}
           </div>
           {selected.size > 0 && <button className="btn accent"><Ic.Send/> Enviar mensagem</button>}
         </div>
@@ -207,7 +217,7 @@ export default function ContatosPage({ toast }) {
                 {query ? `Nenhum resultado para "${query}"` : 'Nenhum contato cadastrado'}
               </td></tr>
             )}
-            {!loading && filtered.map(c => (
+            {!loading && paginated.map(c => (
               <tr key={c.id}>
                 <td><input type="checkbox" checked={selected.has(c.id)} onChange={() => toggle(c.id)}/></td>
                 <td>
@@ -244,6 +254,9 @@ export default function ContatosPage({ toast }) {
           </tbody>
         </table>
       </div>
+
+      <Pagination page={page} totalPages={totalPages} total={filtered.length}
+        perPage={PAGE_SIZE} label="contatos" onChange={setPage}/>
 
       {modalContact && (
         <ContactModal

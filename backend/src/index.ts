@@ -10,6 +10,7 @@ import { webhookRoutes }   from './routes/webhooks';
 import { tokenRoutes }     from './routes/tokens';
 import { logRoutes }       from './routes/logs';
 import { dashboardRoutes } from './routes/dashboard';
+import { groupRoutes }     from './routes/groups';
 
 const PORT = Number(process.env.PORT ?? 3000);
 
@@ -33,6 +34,7 @@ const app = new Elysia()
         { name: 'Tokens',    description: 'Tokens de API'              },
         { name: 'Logs',      description: 'Logs do sistema'            },
         { name: 'Dashboard', description: 'Métricas e visão geral'     },
+        { name: 'Groups',    description: 'Grupos WhatsApp'            },
       ],
       components: {
         securitySchemes: {
@@ -59,6 +61,7 @@ const app = new Elysia()
   .use(dashboardRoutes)
   .use(sessionRoutes)
   .use(contactRoutes)
+  .use(groupRoutes)
   .use(webhookRoutes)
   .use(tokenRoutes)
   .use(logRoutes)

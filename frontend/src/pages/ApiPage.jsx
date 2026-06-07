@@ -1,6 +1,9 @@
 import React from 'react';
 import Ic from '../components/icons';
 import { tokensService } from '../services/tokens';
+import Pagination from '../components/pagination';
+
+const PAGE_SIZE = 10;
 
 const CURL_EXAMPLE = `curl -X POST https://api.wppconnect.io/v1/messages \\
   -H "Authorization: Bearer wpp_live_••••••••••••••••••••••••••••••••••••••••" \\
@@ -172,6 +175,7 @@ export default function ApiPage({ toast }) {
   const [loading, setLoading]     = React.useState(true);
   const [revealed, setRevealed]   = React.useState(new Set());
   const [menuId, setMenuId]       = React.useState(null);
+  const [page, setPage]           = React.useState(1);
   const [showCurl, setShowCurl]   = React.useState(false);
   const [query, setQuery]         = React.useState('');
   const [modalOpen, setModalOpen]   = React.useState(false);
@@ -225,6 +229,12 @@ export default function ApiPage({ toast }) {
   };
 
   const filtered = tokens.filter(t => !query || t.name.toLowerCase().includes(query.toLowerCase()));
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated  = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  React.useEffect(() => { if (page > totalPages) setPage(totalPages); }, [totalPages]);
+  React.useEffect(() => { setPage(1); }, [query]);
 
   const formatDate = (d) => d ? new Date(d).toLocaleDateString('pt-BR') : '—';
   const formatLast = (d) => {
@@ -283,7 +293,7 @@ export default function ApiPage({ toast }) {
 
       {/* Listagem */}
       <div className="card-panel" style={{ padding: 0 }}>
-        <div style={{ padding: 12, display: 'flex', gap: 8, alignItems: 'center', borderBottom: '1px solid var(--border)' }}>
+        <div className="table-toolbar" style={{ padding: 12, display: 'flex', gap: 8, alignItems: 'center', borderBottom: '1px solid var(--border)' }}>
           <div className="search" style={{ width: 280 }}>
             <Ic.Search style={{ color: 'var(--ink-4)' }}/>
             <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar token…"/>
@@ -317,7 +327,7 @@ export default function ApiPage({ toast }) {
                 </td>
               </tr>
             )}
-            {!loading && filtered.map(t => {
+            {!loading && paginated.map(t => {
               const isRevealed = revealed.has(t.id);
               const tokenStr   = (t.tokenPrefix ?? 'wpp_') + (isRevealed ? '••• (revelado no momento da criação)' : '•••••••••••••••••••••••••••••');
               return (
@@ -358,6 +368,9 @@ export default function ApiPage({ toast }) {
           </tbody>
         </table>
       </div>
+
+      <Pagination page={page} totalPages={totalPages} total={filtered.length}
+        perPage={PAGE_SIZE} label="tokens" onChange={setPage}/>
 
       {/* cURL example */}
       <div className="section-head" style={{ cursor: 'pointer', marginTop: 24 }} onClick={() => setShowCurl(v => !v)}>

@@ -1,6 +1,9 @@
 import React from 'react';
 import Ic from '../components/icons';
 import { logsService } from '../services/logs';
+import Pagination from '../components/pagination';
+
+const PAGE_SIZE = 25;
 
 const LEVEL = {
   info:  { label: 'INFO',  pillCls: 'qr'       },
@@ -21,6 +24,7 @@ export default function LogsPage() {
   const [loading, setLoading] = React.useState(true);
   const [filter, setFilter]   = React.useState('all');
   const [query, setQuery]     = React.useState('');
+  const [page, setPage]       = React.useState(1);
   const [sourceFilter, setSourceFilter] = React.useState('');
 
   // Lê filtro de fonte passado por sessionStorage (ex: de Webhooks "Ver logs")
@@ -66,7 +70,12 @@ export default function LogsPage() {
     URL.revokeObjectURL(url);
   };
 
-  const visible = rows;
+  const visible    = rows;
+  const totalPages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
+  const paginated  = visible.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  React.useEffect(() => { if (page > totalPages) setPage(totalPages); }, [totalPages]);
+  React.useEffect(() => { setPage(1); }, [filter, query, sourceFilter]);
 
   return (
     <>
@@ -119,7 +128,7 @@ export default function LogsPage() {
       </div>
 
       <div className="card-panel" style={{ padding: 0 }}>
-        <div style={{ padding: 12, display: 'flex', gap: 8, alignItems: 'center', borderBottom: '1px solid var(--border)' }}>
+        <div className="table-toolbar" style={{ padding: 12, display: 'flex', gap: 8, alignItems: 'center', borderBottom: '1px solid var(--border)' }}>
           <div className="search" style={{ width: 320 }}>
             <Ic.Search style={{ color: 'var(--ink-4)' }}/>
             <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar mensagem ou fonte…"/>
@@ -149,7 +158,7 @@ export default function LogsPage() {
             {!loading && visible.length === 0 && (
               <tr><td colSpan={4} style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--ink-4)' }}>Nenhum log encontrado</td></tr>
             )}
-            {!loading && visible.slice(0, 50).map(r => {
+            {!loading && paginated.map(r => {
               const cfg = LEVEL[r.level] || LEVEL.info;
               return (
                 <tr key={r.id}>
@@ -169,12 +178,10 @@ export default function LogsPage() {
           </tbody>
         </table>
 
-        {visible.length > 50 && (
-          <div style={{ padding: '10px 16px', fontSize: 12, color: 'var(--ink-4)', borderTop: '1px solid var(--border)' }}>
-            Mostrando 50 de {visible.length} entradas
-          </div>
-        )}
       </div>
+
+      <Pagination page={page} totalPages={totalPages} total={visible.length}
+        perPage={PAGE_SIZE} label="entradas" onChange={setPage}/>
     </>
   );
 }

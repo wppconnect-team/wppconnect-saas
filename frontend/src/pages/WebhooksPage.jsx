@@ -1,6 +1,9 @@
 import React from 'react';
 import Ic from '../components/icons';
 import { webhooksService } from '../services/webhooks';
+import Pagination from '../components/pagination';
+
+const PAGE_SIZE = 15;
 
 const ALL_EVENTS = [
   'message.received', 'message.sent',
@@ -99,6 +102,7 @@ export default function WebhooksPage({ toast }) {
   const [loading, setLoading]           = React.useState(true);
   const [filter, setFilter]             = React.useState('all');
   const [query, setQuery]               = React.useState('');
+  const [page, setPage]                 = React.useState(1);
   const [showPayload, setShowPayload]   = React.useState(false);
   const [menuId, setMenuId]             = React.useState(null);
   const [modalWebhook, setModalWebhook] = React.useState(null); // null=fechado | 'new' | obj de webhook
@@ -162,6 +166,12 @@ export default function WebhooksPage({ toast }) {
     return matchFilter && matchQuery;
   });
 
+  const totalPages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
+  const paginated  = visible.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  React.useEffect(() => { if (page > totalPages) setPage(totalPages); }, [totalPages]);
+  React.useEffect(() => { setPage(1); }, [query, filter]);
+
   return (
     <>
       <div className="page-head">
@@ -197,7 +207,7 @@ export default function WebhooksPage({ toast }) {
       </div>
 
       <div className="card-panel" style={{ padding: 0 }}>
-        <div style={{ padding: 12, display: 'flex', gap: 8, alignItems: 'center', borderBottom: '1px solid var(--border)' }}>
+        <div className="table-toolbar" style={{ padding: 12, display: 'flex', gap: 8, alignItems: 'center', borderBottom: '1px solid var(--border)' }}>
           <div className="search" style={{ width: 300 }}>
             <Ic.Search style={{ color: 'var(--ink-4)' }}/>
             <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar por URL…"/>
@@ -230,7 +240,7 @@ export default function WebhooksPage({ toast }) {
                 {query ? `Nenhum resultado para "${query}"` : 'Nenhum endpoint cadastrado'}
               </td></tr>
             )}
-            {!loading && visible.map(w => (
+            {!loading && paginated.map(w => (
               <tr key={w.id}>
                 <td>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -288,6 +298,9 @@ export default function WebhooksPage({ toast }) {
           </tbody>
         </table>
       </div>
+
+      <Pagination page={page} totalPages={totalPages} total={visible.length}
+        perPage={PAGE_SIZE} label="endpoints" onChange={setPage}/>
 
       <div className="section-head" style={{ cursor: 'pointer', marginTop: 24 }} onClick={() => setShowPayload(v => !v)}>
         <h3>Exemplo de payload</h3>

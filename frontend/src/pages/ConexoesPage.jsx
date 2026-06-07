@@ -4,6 +4,7 @@ import ConnectPanel from '../components/connect';
 import NewSessionModal from '../components/modal';
 import QrCodeModal from '../components/qrmodal';
 import { sessionsService } from '../services/sessions';
+import Pagination from '../components/pagination';
 
 const PAGE_SIZE = 8;
 
@@ -212,13 +213,13 @@ export default function ConexoesPage({ toast }) {
       </div>
 
       {/* Layout: tabela + painel lateral */}
-      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+      <div className="conexoes-layout">
 
         {/* Tabela */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="card-panel" style={{ padding: 0 }}>
             {/* Toolbar */}
-            <div style={{ padding: 12, display: 'flex', gap: 8, alignItems: 'center', borderBottom: '1px solid var(--border)' }}>
+            <div className="table-toolbar" style={{ padding: 12, display: 'flex', gap: 8, alignItems: 'center', borderBottom: '1px solid var(--border)' }}>
               <div className="search" style={{ width: 280 }}>
                 <Ic.Search style={{ color: 'var(--ink-4)' }}/>
                 <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar sessão ou número…"/>
@@ -332,37 +333,13 @@ export default function ConexoesPage({ toast }) {
             </table>
           </div>
 
-          {/* Paginação */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 2px', marginTop: 8 }}>
-            <span style={{ fontSize: 12, color: 'var(--ink-4)' }}>
-              {visible.length > 0
-                ? `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, visible.length)} de ${visible.length} sessões`
-                : '0 sessões'}
-            </span>
-            {totalPages > 1 && (
-              <div style={{ display: 'flex', gap: 4 }}>
-                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-                  style={{ padding: '4px 10px', fontSize: 12, border: '1px solid var(--border)', background: 'var(--panel-2)', color: page === 1 ? 'var(--ink-4)' : 'var(--ink-2)', cursor: page === 1 ? 'default' : 'pointer', opacity: page === 1 ? 0.5 : 1 }}>←</button>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-                  <button key={p} onClick={() => setPage(p)}
-                    style={{ padding: '4px 10px', fontSize: 12, minWidth: 32, textAlign: 'center', border: '1px solid', cursor: 'pointer',
-                      borderColor: p === page ? 'var(--accent-border)' : 'var(--border)',
-                      background:  p === page ? 'var(--accent-soft)'  : 'var(--panel-2)',
-                      color:       p === page ? 'var(--accent-ink)'   : 'var(--ink-2)',
-                      fontWeight:  p === page ? 600 : 400 }}>
-                    {p}
-                  </button>
-                ))}
-                <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-                  style={{ padding: '4px 10px', fontSize: 12, border: '1px solid var(--border)', background: 'var(--panel-2)', color: page === totalPages ? 'var(--ink-4)' : 'var(--ink-2)', cursor: page === totalPages ? 'default' : 'pointer', opacity: page === totalPages ? 0.5 : 1 }}>→</button>
-              </div>
-            )}
-          </div>
+          <Pagination page={page} totalPages={totalPages} total={visible.length}
+            perPage={PAGE_SIZE} label="sessões" onChange={setPage}/>
         </div>
 
         {/* Painel lateral de conexão */}
         {activeSession && (
-          <div style={{ width: 300, flexShrink: 0, position: 'sticky', top: 16 }}>
+          <div className="conexoes-panel">
             <ConnectPanel
               session={activeSession}
               mode={mode} setMode={setMode}

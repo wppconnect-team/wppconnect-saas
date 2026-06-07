@@ -8,6 +8,7 @@ import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import ConexoesPage from './pages/ConexoesPage';
 import ContatosPage from './pages/ContatosPage';
+import GruposPage from './pages/GruposPage';
 import WebhooksPage from './pages/WebhooksPage';
 import ApiPage from './pages/ApiPage';
 import LogsPage from './pages/LogsPage';
@@ -19,6 +20,7 @@ const PAGE_META = {
   dashboard: { crumbs: ['Workspace', 'Visão geral', 'Dashboard'] },
   conexoes:  { crumbs: ['Workspace', 'Engajamento', 'Conexões']  },
   contatos:  { crumbs: ['Workspace', 'Engajamento', 'Contatos']  },
+  grupos:    { crumbs: ['Workspace', 'Engajamento', 'Grupos']    },
   webhooks:  { crumbs: ['Workspace', 'Desenvolvedor', 'Webhooks'] },
   api:       { crumbs: ['Workspace', 'Desenvolvedor', 'API & Tokens'] },
   logs:      { crumbs: ['Workspace', 'Desenvolvedor', 'Logs']    },
@@ -65,7 +67,7 @@ function AppTopbar({ nav, theme, setTheme, onMenuClick }) {
   );
 }
 
-const VALID_PAGES = new Set(['dashboard','conexoes','contatos','webhooks','api','logs','config']);
+const VALID_PAGES = new Set(['dashboard','conexoes','contatos','grupos','webhooks','api','logs','config']);
 
 function getPageFromHash() {
   const page = window.location.hash.slice(1);
@@ -185,6 +187,7 @@ export default function App() {
       case 'dashboard': return <DashboardPage toast={toast}/>;
       case 'conexoes':  return <ConexoesPage  toast={toast}/>;
       case 'contatos':  return <ContatosPage  toast={toast}/>;
+      case 'grupos':    return <GruposPage    toast={toast}/>;
       case 'webhooks':  return <WebhooksPage  toast={toast}/>;
       case 'api':       return <ApiPage       toast={toast}/>;
       case 'logs':      return <LogsPage      toast={toast}/>;
@@ -239,6 +242,7 @@ export default function App() {
               { value: 'dashboard', label: 'Dashboard'      },
               { value: 'conexoes',  label: 'Conexões'       },
               { value: 'contatos',  label: 'Contatos'       },
+              { value: 'grupos',    label: 'Grupos'         },
               { value: 'webhooks',  label: 'Webhooks'       },
               { value: 'api',       label: 'API & Tokens'   },
               { value: 'logs',      label: 'Logs'           },

@@ -141,7 +141,7 @@ export default function DashboardPage({ toast }) {
         </div>
       </div>
 
-      <div className="stats" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+      <div className="stats">
         {kpis.map(k => (
           <div className="stat" key={k.label} style={{ cursor: 'default' }}>
             <div style={{ flex: 1 }}>
@@ -154,7 +154,7 @@ export default function DashboardPage({ toast }) {
         ))}
       </div>
 
-      <div className="content-grid" style={{ gridTemplateColumns: '1fr 320px' }}>
+      <div className="content-grid">
         <div>
           <div className="section-head">
             <h3>Volume de mensagens · últimos 7 dias</h3>

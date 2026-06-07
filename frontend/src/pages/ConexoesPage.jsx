@@ -188,7 +188,7 @@ export default function ConexoesPage({ toast }) {
       </div>
 
       {/* Stats */}
-      <div className="stats" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+      <div className="stats">
         {[
           { id: 'all',       label: 'Total',         value: counts.all,       icon: 'Phone',       cls: 'total',     delta: `${counts.all} sessões` },
           { id: 'connected', label: 'Conectadas',    value: counts.connected, icon: 'PhonePlugged', cls: 'connected', delta: counts.all > 0 ? `${Math.round(counts.connected / counts.all * 100)}% do total` : '—' },

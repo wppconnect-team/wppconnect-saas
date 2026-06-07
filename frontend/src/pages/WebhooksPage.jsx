@@ -175,7 +175,7 @@ export default function WebhooksPage({ toast }) {
         </div>
       </div>
 
-      <div className="stats" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+      <div className="stats">
         {[
           { label: 'Total',      value: String(stats.total).padStart(2,'0'),              icon: 'Webhook',  cls: 'total',                                    delta: 'endpoints'   },
           { label: 'Ativos',     value: String(stats.ativos).padStart(2,'0'),             icon: 'Check',    cls: 'connected',                                delta: 'funcionando' },

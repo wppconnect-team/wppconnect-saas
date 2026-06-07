@@ -150,7 +150,7 @@ export default function ContatosPage({ toast }) {
         </div>
       </div>
 
-      <div className="stats" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+      <div className="stats">
         {[
           { label: 'Total',     value: String(stats.total).padStart(2,'0'),                                icon: 'Users',   cls: 'total',     delta: 'contatos' },
           { label: 'Ativos',    value: String(stats.ativos).padStart(2,'0'),                               icon: 'Check',   cls: 'connected', delta: stats.total > 0 ? `${Math.round(stats.ativos / stats.total * 100)}% do total` : '—' },

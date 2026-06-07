@@ -261,7 +261,7 @@ export default function ApiPage({ toast }) {
       </div>
 
       {/* Métricas */}
-      <div className="stats" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+      <div className="stats stats-3">
         {[
           { label: 'Tokens ativos', value: String(tokens.length).padStart(2,'0'), icon: 'KeyRound', cls: 'total',     delta: 'gerados'      },
           { label: 'Último uso',    value: tokens[0] ? formatLast(tokens[0].lastUsedAt) : '—', icon: 'Refresh', cls: 'connected', delta: 'atrás'        },

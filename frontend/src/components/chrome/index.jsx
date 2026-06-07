@@ -2,7 +2,9 @@ import React from 'react';
 import Ic from '../icons';
 import { NAV_MAIN, NAV_DEV, NAV_ACCT } from '../../data';
 
-export function Sidebar({ currentNav, onNav, onLogout }) {
+export function Sidebar({ currentNav, onNav, onLogout, open, onClose }) {
+  const handleNav = (id) => { onNav(id); onClose?.(); };
+
   const Section = ({ title, items }) => (
     <>
       <div className="nav-section">{title}</div>
@@ -12,7 +14,7 @@ export function Sidebar({ currentNav, onNav, onLogout }) {
         return (
           <button key={item.id}
             className={"nav-item" + (active ? " active" : "")}
-            onClick={() => onNav(item.id)}>
+            onClick={() => handleNav(item.id)}>
             <Icon className="icon"/>
             <span>{item.label}</span>
             {item.count !== undefined && <span className="count">{item.count}</span>}
@@ -23,35 +25,38 @@ export function Sidebar({ currentNav, onNav, onLogout }) {
   );
 
   return (
-    <aside className="sidebar">
-      <div className="brand">
-        <div className="brand-mark">Wpp</div>
-        <div className="brand-name">
-          Wppconnect
-          <small>workspace</small>
+    <>
+      {open && <div className="sidebar-overlay" onClick={onClose}/>}
+      <aside className={"sidebar" + (open ? " open" : "")}>
+        <div className="brand">
+          <div className="brand-mark">Wpp</div>
+          <div className="brand-name">
+            Wppconnect
+            <small>workspace</small>
+          </div>
         </div>
-      </div>
 
-      <Section title="Principal" items={NAV_MAIN} />
-      <Section title="Desenvolvedor" items={NAV_DEV} />
-      <Section title="Conta" items={NAV_ACCT} />
+        <Section title="Principal" items={NAV_MAIN} />
+        <Section title="Desenvolvedor" items={NAV_DEV} />
+        <Section title="Conta" items={NAV_ACCT} />
 
-      <div className="sidebar-footer">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <button className="user-chip" style={{ flex: 1, minWidth: 0, width: 'auto' }}>
-            <div className="avatar">MR</div>
-            <div className="info">
-              <div className="name">Marcos Ribeiro</div>
-              <div className="mail">marcos@Wppconnect.io</div>
-            </div>
-          </button>
-          <button className="icon-btn" onClick={onLogout} title="Sair"
-            style={{ flexShrink: 0, color: 'var(--ink-3)' }}>
-            <Ic.Logout style={{ width: 15, height: 15 }}/>
-          </button>
+        <div className="sidebar-footer">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <button className="user-chip" style={{ flex: 1, minWidth: 0, width: 'auto' }}>
+              <div className="avatar">MR</div>
+              <div className="info">
+                <div className="name">Marcos Ribeiro</div>
+                <div className="mail">marcos@Wppconnect.io</div>
+              </div>
+            </button>
+            <button className="icon-btn" onClick={onLogout} title="Sair"
+              style={{ flexShrink: 0, color: 'var(--ink-3)' }}>
+              <Ic.Logout style={{ width: 15, height: 15 }}/>
+            </button>
+          </div>
         </div>
-      </div>
-    </aside>
+      </aside>
+    </>
   );
 }
 

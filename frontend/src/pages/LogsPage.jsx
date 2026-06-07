@@ -94,7 +94,7 @@ export default function LogsPage() {
         </div>
       </div>
 
-      <div className="stats" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+      <div className="stats">
         {[
           { id: 'ok',    label: 'OK',    value: counts.ok,    icon: 'Check',   cls: 'connected' },
           { id: 'info',  label: 'Info',  value: counts.info,  icon: 'Info',    cls: 'total'     },

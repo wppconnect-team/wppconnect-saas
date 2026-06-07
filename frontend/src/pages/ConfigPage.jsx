@@ -204,7 +204,7 @@ export default function ConfigPage({ toast, user }) {
           {/* ── Plano ── */}
           {sec === 'plano' && (
             <Card title="Plano atual · Pro" description="R$ 249/mês · renova em 18/05/2026 · 5 sessões incluídas">
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
+              <div className="plan-grid">
                 {[
                   { label: 'Sessões',              value: '4 / 5'       },
                   { label: 'Mensagens este mês',   value: '18,4k / 50k' },

@@ -25,11 +25,16 @@ const PAGE_META = {
   config:    { crumbs: ['Workspace', 'Conta', 'Configurações']   },
 };
 
-function AppTopbar({ nav, theme, setTheme }) {
+function AppTopbar({ nav, theme, setTheme, onMenuClick }) {
   const meta = PAGE_META[nav] || PAGE_META.dashboard;
   const c = meta.crumbs;
   return (
     <div className="topbar">
+      <button className="hamburger-btn" onClick={onMenuClick} title="Menu">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+      </button>
       <div className="crumbs">
         <span>{c[0]}</span><span className="sep">/</span>
         <span>{c[1]}</span><span className="sep">/</span>
@@ -73,6 +78,7 @@ export default function App() {
   const [toasts, setToasts] = React.useState([]);
   const [authed, setAuthed]             = React.useState(false);
   const [authChecked, setAuthChecked]   = React.useState(false);
+  const [sidebarOpen, setSidebarOpen]   = React.useState(false);
 
   // Salva preferências no banco com debounce de 600ms
   const prefsTimerRef = React.useRef(null);
@@ -189,9 +195,11 @@ export default function App() {
 
   return (
     <div className="app">
-      <Sidebar currentNav={currentNav} onNav={navigate} onLogout={logout} />
+      <Sidebar currentNav={currentNav} onNav={navigate} onLogout={logout}
+        open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="main">
-        <AppTopbar nav={currentNav} theme={theme} setTheme={setTheme}/>
+        <AppTopbar nav={currentNav} theme={theme} setTheme={setTheme}
+          onMenuClick={() => setSidebarOpen(s => !s)}/>
         <div className="scroll-area" key={currentNav}>
           {renderPage()}
         </div>

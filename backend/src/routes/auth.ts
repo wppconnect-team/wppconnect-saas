@@ -53,8 +53,10 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
         }
       }
 
-      const [user] = await sql<{ id: string; name: string; email: string }[]>`
-        SELECT id, name, email
+      const [user] = await sql<{
+        id: string; name: string; email: string; mustChangePassword: boolean;
+      }[]>`
+        SELECT id, name, email, must_change_password AS "mustChangePassword"
         FROM users
         WHERE email          = ${email}
           AND password_hash  = crypt(${password}, password_hash)
@@ -83,8 +85,9 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
       });
 
       return {
-        user:      { id: user.id, name: user.name, email: user.email },
-        expiresIn: JWT_EXPIRES,
+        user:             { id: user.id, name: user.name, email: user.email },
+        mustChangePassword: user.mustChangePassword,
+        expiresIn:        JWT_EXPIRES,
       };
     },
     {
@@ -109,15 +112,20 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
         return { error: 'Sessão expirada' };
       }
 
-      const [user] = await sql<{ id: string; name: string; email: string; preferences: Record<string,unknown>; createdAt: Date }[]>`
-        SELECT id, name, email, preferences, created_at AS "createdAt"
+      const [user] = await sql<{
+        id: string; name: string; email: string;
+        preferences: Record<string,unknown>; createdAt: Date;
+        mustChangePassword: boolean;
+      }[]>`
+        SELECT id, name, email, preferences, created_at AS "createdAt",
+               must_change_password AS "mustChangePassword"
         FROM users
         WHERE id = ${payload.sub as string}
         LIMIT 1
       `;
 
       if (!user) { set.status = 404; return { error: 'Usuário não encontrado' }; }
-      return { user };
+      return { user, mustChangePassword: user.mustChangePassword };
     }
   )
 
@@ -200,6 +208,34 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
       return { preferences: user.preferences };
     },
     { body: t.Any() }
+  )
+
+  // POST /api/auth/set-password — define nova senha (obrigatório no primeiro acesso)
+  .post('/set-password',
+    async ({ body, cookie: { auth }, jwt, set }) => {
+      const token = auth?.value as string | undefined;
+      if (!token) { set.status = 401; return { error: 'Não autenticado' }; }
+
+      const payload = await jwt.verify(token);
+      if (!payload) { auth.remove(); set.status = 401; return { error: 'Sessão expirada' }; }
+
+      const { newPassword } = body;
+
+      await sql`
+        UPDATE users
+        SET password_hash       = crypt(${newPassword}, gen_salt('bf', 10)),
+            must_change_password = FALSE,
+            member_status        = 'active'
+        WHERE id = ${payload.sub as string}
+      `;
+
+      return { ok: true };
+    },
+    {
+      body: t.Object({
+        newPassword: t.String({ minLength: 6, maxLength: 1000 }),
+      }),
+    }
   )
 
   // POST /api/auth/logout

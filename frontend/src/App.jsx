@@ -4,6 +4,132 @@ import { Sidebar } from './components/chrome';
 import Ic from './components/icons';
 import { isDemo, setDemo, clearDemo } from './services/api';
 import { authService } from './services/auth';
+
+function SetPasswordModal({ onDone }) {
+  const [pwd,     setPwd]     = React.useState('');
+  const [confirm, setConfirm] = React.useState('');
+  const [busy,    setBusy]    = React.useState(false);
+  const [error,   setError]   = React.useState('');
+  const [show,    setShow]    = React.useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (pwd !== confirm) { setError('As senhas não coincidem.'); return; }
+    if (pwd.length < 6)  { setError('A senha deve ter pelo menos 6 caracteres.'); return; }
+    setBusy(true); setError('');
+    try {
+      await authService.setPassword(pwd);
+      onDone();
+    } catch (err) {
+      setError(err?.error ?? 'Erro ao definir senha. Tente novamente.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const strength = pwd.length === 0 ? 0
+    : pwd.length < 6  ? 1
+    : pwd.length < 10 ? 2
+    : /[A-Z]/.test(pwd) && /[0-9]/.test(pwd) && /[^A-Za-z0-9]/.test(pwd) ? 4
+    : 3;
+  const strengthLabel = ['', 'Fraca', 'Razoável', 'Boa', 'Forte'];
+  const strengthColor = ['', 'var(--rose-ink,#e55)', '#e08030', '#3a9', 'var(--accent)'];
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)',
+      display: 'grid', placeItems: 'center', zIndex: 100 }}>
+      <form onSubmit={submit} style={{
+        background: 'var(--panel)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)',
+        width: 420, maxWidth: '92vw', overflow: 'hidden',
+        animation: 'slideUp 0.18s ease-out',
+      }}>
+        <div style={{ padding: '24px 24px 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+            <div style={{
+              width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+              background: 'var(--accent-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Ic.KeyRound style={{ width: 20, height: 20, color: 'var(--accent)' }}/>
+            </div>
+            <div>
+              <h3 style={{ margin: 0, fontSize: 17, fontWeight: 600, letterSpacing: '-0.01em' }}>
+                Defina sua senha
+              </h3>
+              <p style={{ margin: '3px 0 0', fontSize: 13, color: 'var(--ink-3)' }}>
+                Esta é sua primeira entrada. Crie uma senha segura antes de continuar.
+              </p>
+            </div>
+          </div>
+
+          <div className="field" style={{ marginBottom: 12 }}>
+            <label>Nova senha</label>
+            <div style={{ position: 'relative' }}>
+              <input
+                type={show ? 'text' : 'password'}
+                value={pwd}
+                onChange={e => setPwd(e.target.value)}
+                placeholder="Mínimo 6 caracteres"
+                autoFocus
+                required
+                style={{ paddingRight: 38 }}
+              />
+              <button type="button" onClick={() => setShow(s => !s)}
+                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                  background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-3)', padding: 0 }}>
+                {show ? <Ic.EyeOff style={{ width: 15, height: 15 }}/> : <Ic.Eye style={{ width: 15, height: 15 }}/>}
+              </button>
+            </div>
+            {pwd.length > 0 && (
+              <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ flex: 1, height: 3, borderRadius: 2, background: 'var(--border)', overflow: 'hidden' }}>
+                  <div style={{
+                    height: '100%', borderRadius: 2, transition: 'width 0.2s, background 0.2s',
+                    width: `${strength * 25}%`, background: strengthColor[strength],
+                  }}/>
+                </div>
+                <span style={{ fontSize: 11, color: strengthColor[strength], fontWeight: 600 }}>
+                  {strengthLabel[strength]}
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="field" style={{ marginBottom: 4 }}>
+            <label>Confirmar senha</label>
+            <input
+              type={show ? 'text' : 'password'}
+              value={confirm}
+              onChange={e => setConfirm(e.target.value)}
+              placeholder="Repita a senha"
+              required
+            />
+            {confirm.length > 0 && pwd !== confirm && (
+              <div style={{ fontSize: 12, color: 'var(--rose-ink,#e55)', marginTop: 4 }}>
+                As senhas não coincidem
+              </div>
+            )}
+          </div>
+
+          {error && (
+            <div style={{ padding: '8px 12px', background: 'var(--rose-soft,#fff0f0)',
+              border: '1px solid var(--rose-border,#fcc)', color: 'var(--rose-ink,#e55)',
+              fontSize: 13, borderRadius: 6, marginTop: 8 }}>
+              {error}
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8,
+          padding: '14px 24px', borderTop: '1px solid var(--border)', background: 'var(--panel-2)' }}>
+          <button type="submit" className="btn primary"
+            disabled={busy || pwd.length < 6 || pwd !== confirm}>
+            {busy ? 'Salvando…' : <><Ic.Check/> Definir senha e entrar</>}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import ConexoesPage from './pages/ConexoesPage';
@@ -75,11 +201,12 @@ function getPageFromHash() {
 }
 
 export default function App() {
-  const [user, setUser]                 = React.useState(null);
-  const [currentNav, setCurrentNavState] = React.useState(getPageFromHash);
-  const [toasts, setToasts] = React.useState([]);
-  const [authed, setAuthed]             = React.useState(false);
-  const [authChecked, setAuthChecked]   = React.useState(false);
+  const [user, setUser]                   = React.useState(null);
+  const [currentNav, setCurrentNavState]  = React.useState(getPageFromHash);
+  const [toasts, setToasts]               = React.useState([]);
+  const [authed, setAuthed]               = React.useState(false);
+  const [authChecked, setAuthChecked]     = React.useState(false);
+  const [mustChangePwd, setMustChangePwd] = React.useState(false);
   const [sidebarOpen, setSidebarOpen]       = React.useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(
     () => localStorage.getItem('sidebar_collapsed') === 'true'
@@ -109,7 +236,11 @@ export default function App() {
       return;
     }
     authService.me()
-      .then(data => { setUser(data.user); setAuthed(true); })
+      .then(data => {
+        setUser(data.user);
+        setAuthed(true);
+        if (data.mustChangePassword) setMustChangePwd(true);
+      })
       .catch(() => {}) // não autenticado — permanece na tela de login
       .finally(() => setAuthChecked(true));
   }, []);
@@ -154,19 +285,22 @@ export default function App() {
     setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 2600);
   };
 
-  // demo=true → SSO simulado sem credenciais reais; demo=false → login real (cookie já foi setado pelo servidor)
-  const login = async (demo = false) => {
+  // demo=true → SSO simulado sem credenciais reais; demo=false → login real
+  const login = async (demo = false, mustChange = false) => {
     if (demo) {
       setDemo();
     } else {
-      // Busca dados do usuário (inclui preferences) após login bem-sucedido
       try {
         const data = await authService.me();
         setUser(data.user);
       } catch {}
     }
     setAuthed(true);
-    navigate('dashboard');
+    if (mustChange) {
+      setMustChangePwd(true);
+    } else {
+      navigate('dashboard');
+    }
   };
 
   const logout = async () => {
@@ -174,6 +308,7 @@ export default function App() {
     try { await authService.logout(); } catch { /* ignora — cookie expira naturalmente */ }
     setUser(null);
     setAuthed(false);
+    setMustChangePwd(false);
     history.pushState('', document.title, window.location.pathname);
   };
 
@@ -206,6 +341,9 @@ export default function App() {
 
   return (
     <div className={"app" + (sidebarCollapsed ? " sidebar-collapsed" : "")}>
+      {mustChangePwd && (
+        <SetPasswordModal onDone={() => { setMustChangePwd(false); navigate('dashboard'); }}/>
+      )}
       <Sidebar currentNav={currentNav} onNav={navigate} onLogout={logout}
         open={sidebarOpen} onClose={() => setSidebarOpen(false)}
         collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebarCollapse}/>

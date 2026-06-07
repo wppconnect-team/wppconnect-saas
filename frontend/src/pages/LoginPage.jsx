@@ -79,8 +79,8 @@ export default function LoginPage({ onLogin, theme, setTheme }) {
     setLoading('email');
     setLoginError('');
     try {
-      await authService.login(email, pwd, turnstileToken);
-      onLogin(false);
+      const res = await authService.login(email, pwd, turnstileToken);
+      onLogin(false, res?.mustChangePassword === true);
     } catch (err) {
       setLoginError(err?.error ?? 'Email ou senha inválidos');
       setLoading(null);

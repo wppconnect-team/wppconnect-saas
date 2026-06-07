@@ -52,13 +52,14 @@ export const memberRoutes = new Elysia({ prefix: '/api/members' })
       ).join('');
 
       const [member] = await sql<{ id: string; name: string; email: string; role: string }[]>`
-        INSERT INTO users (name, email, password_hash, role, member_status)
+        INSERT INTO users (name, email, password_hash, role, member_status, must_change_password)
         VALUES (
           ${name},
           ${email},
           crypt(${tempPassword}, gen_salt('bf', 10)),
           ${role},
-          'invited'
+          'invited',
+          TRUE
         )
         RETURNING id, name, email, role
       `;

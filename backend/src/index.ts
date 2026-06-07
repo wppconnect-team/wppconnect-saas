@@ -11,6 +11,8 @@ import { tokenRoutes }     from './routes/tokens';
 import { logRoutes }       from './routes/logs';
 import { dashboardRoutes } from './routes/dashboard';
 import { groupRoutes }     from './routes/groups';
+import { memberRoutes }    from './routes/members';
+import { planRoutes }      from './routes/plan';
 
 const PORT = Number(process.env.PORT ?? 3000);
 
@@ -62,6 +64,8 @@ const app = new Elysia()
   .use(sessionRoutes)
   .use(contactRoutes)
   .use(groupRoutes)
+  .use(memberRoutes)
+  .use(planRoutes)
   .use(webhookRoutes)
   .use(tokenRoutes)
   .use(logRoutes)

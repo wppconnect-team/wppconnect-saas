@@ -26,3 +26,6 @@ Thumbs.db
 
 # Docker volumes locais
 postgres_data/
+
+# npm lockfile é redundante com bun.lock
+package-lock.json

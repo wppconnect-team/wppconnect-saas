@@ -84,26 +84,26 @@ const __TWEAKS_STYLE = `
   .twk-swatch::-moz-color-swatch{border:0;border-radius:5.5px}
 `;
 
-const STORAGE_KEY = 'wpp_tweaks';
+export function useTweaks(defaults, savedValues, onSave) {
+  const [values, setValues] = React.useState(() => ({
+    ...defaults,
+    ...(savedValues ?? {}),
+  }));
 
-export function useTweaks(defaults) {
-  const [values, setValues] = React.useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      return saved ? { ...defaults, ...JSON.parse(saved) } : defaults;
-    } catch {
-      return defaults;
+  // Sincroniza quando as preferências do servidor chegam (após login)
+  const syncedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (savedValues && !syncedRef.current) {
+      syncedRef.current = true;
+      setValues(v => ({ ...defaults, ...savedValues, ...v }));
     }
-  });
+  }, [savedValues]);
 
   const setTweak = React.useCallback((key, val) => {
-    setValues((prev) => {
-      const next = { ...prev, [key]: val };
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* quota */ }
-      return next;
-    });
+    setValues((prev) => ({ ...prev, [key]: val }));
+    onSave?.(key, val);
     window.parent.postMessage({ type: '__edit_mode_set_keys', edits: { [key]: val } }, '*');
-  }, []);
+  }, [onSave]);
 
   return [values, setTweak];
 }

@@ -14,6 +14,15 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
     async ({ query, userId }) => {
       const { status, search } = query;
 
+      // Sessões presas em 'qr' há mais de 90s são automaticamente desconectadas
+      await sql`
+        UPDATE sessions
+        SET status = 'offline', qr_image = NULL, qr_expires_at = NULL
+        WHERE user_id = ${userId}
+          AND status = 'qr'
+          AND updated_at < NOW() - INTERVAL '90 seconds'
+      `;
+
       const rows = await sql<{
         id: string; name: string; phone: string; status: string;
         tag: string; messagesToday: number; lastActivity: string; created: string;
@@ -131,7 +140,9 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
           webhook, proxy,
           messages_today                    AS "messagesToday",
           last_activity                     AS "lastActivity",
-          TO_CHAR(created_at, 'DD/MM/YYYY') AS created
+          TO_CHAR(created_at, 'DD/MM/YYYY') AS created,
+          qr_image                          AS "qrImage",
+          qr_expires_at                     AS "qrExpiresAt"
         FROM sessions
         WHERE id = ${params.id}
           AND user_id = ${userId}
@@ -146,7 +157,7 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
   .put('/:id',
     async ({ params, body, set, userId }) => {
       const fields = body as Record<string, unknown>;
-      const allowed = ['name','phone','status','tag','messages_today','last_activity','webhook'] as const;
+      const allowed = ['name','phone','status','tag','messages_today','last_activity','webhook','qr_image','qr_expires_at'] as const;
 
       const updates: string[] = [];
       const values: unknown[] = [];
@@ -198,6 +209,8 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
         tag:            t.Optional(t.String()),
         messages_today: t.Optional(t.Number()),
         last_activity:  t.Optional(t.String()),
+        qr_image:       t.Optional(t.Union([t.String(), t.Null()])),
+        qr_expires_at:  t.Optional(t.Union([t.String(), t.Null()])),
       }),
     }
   )

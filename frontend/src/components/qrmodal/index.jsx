@@ -72,10 +72,6 @@ export default function QrCodeModal({ session, initialQr, initialTimer = 60, onC
     socket.off('session-logged').on('session-logged', (status) => {
       if (status.session === session.id) {
         clearInterval(timerRef.current);
-        localStorage.setItem('@WPPConnect-Token', JSON.stringify({
-          session: session.id,
-          token:   token,
-        }));
         setPhase('connected');
         onConnected?.(session.id);
         setTimeout(onClose, 2000);

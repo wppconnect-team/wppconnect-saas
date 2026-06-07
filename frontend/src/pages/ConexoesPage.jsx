@@ -19,54 +19,17 @@ export default function ConexoesPage({ toast }) {
   const [timer, setTimer]           = React.useState(45);
   const [modalOpen, setModalOpen]   = React.useState(false);
   const [qrSession, setQrSession]   = React.useState(null);
-  const [qrCache, setQrCache] = React.useState(() => {
-    try {
-      const raw = sessionStorage.getItem('wpp_qr_cache');
-      if (!raw) return {};
-      const stored = JSON.parse(raw);
-      const now = Date.now();
-      const valid = {};
-      for (const [id, entry] of Object.entries(stored)) {
-        if (entry?.ts && now - entry.ts < 55_000) valid[id] = entry;
-      }
-      return valid;
-    } catch { return {}; }
-  });
   const [page, setPage]             = React.useState(1);
 
   const fetchSessions = React.useCallback(() => {
     setLoading(true);
     sessionsService.list()
-      .then(res => {
-        let list = res.data;
-        // Sessão com offline pendente: modal foi aberto e não houve conexão
-        // (refresh com modal aberto OU update que falhou anteriormente)
-        const pending = sessionStorage.getItem('wpp_offline_pending');
-        if (pending) {
-          list = list.map(s => {
-            if (s.id === pending && s.status !== 'connected') {
-              sessionsService.update(s.id, { status: 'offline' })
-                .then(() => {
-                  if (sessionStorage.getItem('wpp_offline_pending') === s.id)
-                    sessionStorage.removeItem('wpp_offline_pending');
-                })
-                .catch(() => {});
-              return { ...s, status: 'offline' };
-            }
-            return s;
-          });
-        }
-        setSessions(list);
-      })
+      .then(res => setSessions(res.data))
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
 
   React.useEffect(() => { fetchSessions(); }, [fetchSessions]);
-
-  React.useEffect(() => {
-    try { sessionStorage.setItem('wpp_qr_cache', JSON.stringify(qrCache)); } catch {}
-  }, [qrCache]);
 
   // Reset página ao filtrar/buscar
   React.useEffect(() => setPage(1), [filter, search]);
@@ -132,13 +95,11 @@ export default function ConexoesPage({ toast }) {
         toast('Erro ao deletar sessão', 'error');
       }
     } else if (action === 'qr') {
-      // Busca o detalhe para obter wppToken (não exposto na listagem)
+      // Busca o detalhe para obter wppToken e qrImage/qrExpiresAt (não expostos na listagem)
       try {
         const res = await sessionsService.get(session.id);
-        sessionStorage.setItem('wpp_offline_pending', res.data.id);
         setQrSession(res.data);
       } catch {
-        sessionStorage.setItem('wpp_offline_pending', session.id);
         setQrSession(session); // fallback sem wppToken
       }
     } else if (action === 'status')     { toast(`Status: ${session.status}`);
@@ -167,10 +128,9 @@ export default function ConexoesPage({ toast }) {
     { id: 'offline',   label: 'Desconectadas', n: counts.offline   },
   ];
 
-  const _cachedQr  = qrSession ? qrCache[qrSession.id] : null;
-  const _cacheOk   = _cachedQr != null && Date.now() - _cachedQr.ts < 55_000;
-  const _initQr    = _cacheOk ? _cachedQr.img : null;
-  const _initTimer = _cacheOk ? Math.max(5, Math.floor(60 - (Date.now() - _cachedQr.ts) / 1000)) : 60;
+  const _qrExpiry  = qrSession?.qrExpiresAt ? new Date(qrSession.qrExpiresAt) : null;
+  const _initQr    = (_qrExpiry && _qrExpiry > new Date()) ? qrSession.qrImage : null;
+  const _initTimer = _initQr ? Math.max(5, Math.round((_qrExpiry - Date.now()) / 1000)) : 60;
 
   return (
     <>
@@ -387,21 +347,17 @@ export default function ConexoesPage({ toast }) {
           initialQr={_initQr}
           initialTimer={_initTimer}
           onClose={() => setQrSession(null)}
-          onQr={(id, img) => setQrCache(c => ({ ...c, [id]: { img, ts: Date.now() } }))}
+          onQr={(id, img) => {
+            const expiresAt = new Date(Date.now() + 60_000).toISOString();
+            sessionsService.update(id, { qr_image: img, qr_expires_at: expiresAt }).catch(() => {});
+          }}
           onConnected={(id) => {
             setSessions(list => list.map(s => s.id === id ? { ...s, status: 'connected' } : s));
-            sessionsService.update(id, { status: 'connected' }).catch(() => {});
-            setQrCache(c => { const n = { ...c }; delete n[id]; return n; });
-            sessionStorage.removeItem('wpp_offline_pending');
+            sessionsService.update(id, { status: 'connected', qr_image: null, qr_expires_at: null }).catch(() => {});
           }}
           onAbort={(id) => {
             setSessions(list => list.map(s => s.id === id ? { ...s, status: 'offline' } : s));
-            sessionsService.update(id, { status: 'offline' })
-              .then(() => {
-                if (sessionStorage.getItem('wpp_offline_pending') === id)
-                  sessionStorage.removeItem('wpp_offline_pending');
-              })
-              .catch(() => {});
+            sessionsService.update(id, { status: 'offline', qr_image: null, qr_expires_at: null }).catch(() => {});
           }}
         />
       )}

@@ -109,8 +109,8 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
         return { error: 'Sessão expirada' };
       }
 
-      const [user] = await sql<{ id: string; name: string; email: string; createdAt: Date }[]>`
-        SELECT id, name, email, created_at AS "createdAt"
+      const [user] = await sql<{ id: string; name: string; email: string; preferences: Record<string,unknown>; createdAt: Date }[]>`
+        SELECT id, name, email, preferences, created_at AS "createdAt"
         FROM users
         WHERE id = ${payload.sub as string}
         LIMIT 1
@@ -181,6 +181,25 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
         password: t.String({ minLength: 6 }),
       }),
     }
+  )
+
+  // PATCH /api/auth/preferences — salvar preferências de UI do usuário
+  .patch('/preferences',
+    async ({ body, cookie: { auth }, jwt, set }) => {
+      const token = auth?.value;
+      if (!token) { set.status = 401; return { error: 'Não autenticado' }; }
+      const payload = await jwt.verify(token);
+      if (!payload) { auth.remove(); set.status = 401; return { error: 'Sessão expirada' }; }
+
+      const [user] = await sql<{ preferences: Record<string,unknown> }[]>`
+        UPDATE users
+        SET preferences = preferences || ${sql.json(body as Record<string,unknown>)}
+        WHERE id = ${payload.sub as string}
+        RETURNING preferences
+      `;
+      return { preferences: user.preferences };
+    },
+    { body: t.Any() }
   )
 
   // POST /api/auth/logout

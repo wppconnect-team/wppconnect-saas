@@ -68,13 +68,24 @@ function getPageFromHash() {
 }
 
 export default function App() {
-  const [tweaks, setTweaks] = useTweaks(DEFAULTS);
+  const [user, setUser]                 = React.useState(null);
   const [currentNav, setCurrentNavState] = React.useState(getPageFromHash);
   const [toasts, setToasts] = React.useState([]);
   const [authed, setAuthed]             = React.useState(false);
   const [authChecked, setAuthChecked]   = React.useState(false);
 
-  // Verificar sessão ao iniciar: demo flag (localStorage) ou cookie HttpOnly via /me
+  // Salva preferências no banco com debounce de 600ms
+  const prefsTimerRef = React.useRef(null);
+  const savePreferences = React.useCallback((key, val) => {
+    clearTimeout(prefsTimerRef.current);
+    prefsTimerRef.current = setTimeout(() => {
+      authService.updatePreferences({ [key]: val }).catch(() => {});
+    }, 600);
+  }, []);
+
+  const [tweaks, setTweaks] = useTweaks(DEFAULTS, user?.preferences, savePreferences);
+
+  // Verificar sessão ao iniciar: demo flag (sessionStorage) ou cookie HttpOnly via /me
   React.useEffect(() => {
     if (isDemo()) {
       setAuthed(true);
@@ -82,7 +93,7 @@ export default function App() {
       return;
     }
     authService.me()
-      .then(() => setAuthed(true))
+      .then(data => { setUser(data.user); setAuthed(true); })
       .catch(() => {}) // não autenticado — permanece na tela de login
       .finally(() => setAuthChecked(true));
   }, []);
@@ -128,8 +139,16 @@ export default function App() {
   };
 
   // demo=true → SSO simulado sem credenciais reais; demo=false → login real (cookie já foi setado pelo servidor)
-  const login = (demo = false) => {
-    if (demo) setDemo();
+  const login = async (demo = false) => {
+    if (demo) {
+      setDemo();
+    } else {
+      // Busca dados do usuário (inclui preferences) após login bem-sucedido
+      try {
+        const data = await authService.me();
+        setUser(data.user);
+      } catch {}
+    }
     setAuthed(true);
     navigate('dashboard');
   };
@@ -137,6 +156,7 @@ export default function App() {
   const logout = async () => {
     clearDemo();
     try { await authService.logout(); } catch { /* ignora — cookie expira naturalmente */ }
+    setUser(null);
     setAuthed(false);
     history.pushState('', document.title, window.location.pathname);
   };

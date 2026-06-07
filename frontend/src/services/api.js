@@ -1,9 +1,10 @@
 const BASE = import.meta.env.VITE_API_URL ?? '';
 
-// Demo mode: SSO simulado — sem credenciais reais, dados ficam vazios
-export function isDemo()    { return localStorage.getItem('wpp_demo') === '1'; }
-export function setDemo()   { localStorage.setItem('wpp_demo', '1'); }
-export function clearDemo() { localStorage.removeItem('wpp_demo'); }
+// Demo mode: SSO simulado — ativo apenas quando a variável de build está presente
+const DEMO_ENABLED = import.meta.env.VITE_DEMO_MODE === 'true';
+export function isDemo()    { return DEMO_ENABLED && sessionStorage.getItem('wpp_demo') === '1'; }
+export function setDemo()   { if (DEMO_ENABLED) sessionStorage.setItem('wpp_demo', '1'); }
+export function clearDemo() { sessionStorage.removeItem('wpp_demo'); }
 
 async function req(path, init = {}) {
   const res = await fetch(`${BASE}${path}`, {

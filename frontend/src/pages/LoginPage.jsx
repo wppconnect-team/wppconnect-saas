@@ -5,6 +5,7 @@ import TermosPage from './TermosPage';
 import PrivacidadePage from './PrivacidadePage';
 
 const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY ?? '';
+const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === 'true';
 
 function SsoMark({ kind }) {
   if (kind === 'google') return (
@@ -88,10 +89,11 @@ export default function LoginPage({ onLogin, theme, setTheme }) {
     }
   };
 
-  // SSO simulado — modo demo (sem credenciais reais, dados ficam vazios)
+  // SSO simulado — só disponível quando VITE_DEMO_MODE=true no build
   const ssoLogin = (provider) => {
+    if (!DEMO_MODE) return;
     setLoading(provider);
-    setTimeout(() => onLogin(true), 700); // true = modo demo
+    setTimeout(() => onLogin(true), 700);
   };
 
   return (
@@ -111,35 +113,38 @@ export default function LoginPage({ onLogin, theme, setTheme }) {
           <h1>Entrar no workspace</h1>
           <p className="sub">Acesse seu painel de gerenciamento de conexões WhatsApp.</p>
 
-          <div className="sso-stack">
-            <button className="sso-btn" onClick={() => ssoLogin('google')} disabled={loading}>
-              <span className="sso-mark"><SsoMark kind="google"/></span>
-              Continuar com Google
-              {loading === 'google' && <span className="badge">conectando…</span>}
-            </button>
-            <button className="sso-btn" onClick={() => ssoLogin('microsoft')} disabled={loading}>
-              <span className="sso-mark"><SsoMark kind="microsoft"/></span>
-              Continuar com Microsoft
-              {loading === 'microsoft' && <span className="badge">conectando…</span>}
-            </button>
-            <button className="sso-btn" onClick={() => ssoLogin('github')} disabled={loading}>
-              <span className="sso-mark"><SsoMark kind="github"/></span>
-              Continuar com GitHub
-              {loading === 'github' && <span className="badge">conectando…</span>}
-            </button>
-            <button className="sso-btn" onClick={() => ssoLogin('okta')} disabled={loading}>
-              <span className="sso-mark"><SsoMark kind="okta"/></span>
-              Continuar com Okta
-              <span className="badge">SSO</span>
-            </button>
-            <button className="sso-btn" onClick={() => ssoLogin('saml')} disabled={loading}>
-              <span className="sso-mark"><SsoMark kind="saml"/></span>
-              SAML / Provedor corporativo
-              <span className="badge">empresa</span>
-            </button>
-          </div>
+          {DEMO_MODE && (
+            <div className="sso-stack">
+              <button className="sso-btn" onClick={() => ssoLogin('google')} disabled={loading}>
+                <span className="sso-mark"><SsoMark kind="google"/></span>
+                Continuar com Google
+                {loading === 'google' && <span className="badge">conectando…</span>}
+              </button>
+              <button className="sso-btn" onClick={() => ssoLogin('microsoft')} disabled={loading}>
+                <span className="sso-mark"><SsoMark kind="microsoft"/></span>
+                Continuar com Microsoft
+                {loading === 'microsoft' && <span className="badge">conectando…</span>}
+              </button>
+              <button className="sso-btn" onClick={() => ssoLogin('github')} disabled={loading}>
+                <span className="sso-mark"><SsoMark kind="github"/></span>
+                Continuar com GitHub
+                {loading === 'github' && <span className="badge">conectando…</span>}
+              </button>
+              <button className="sso-btn" onClick={() => ssoLogin('okta')} disabled={loading}>
+                <span className="sso-mark"><SsoMark kind="okta"/></span>
+                Continuar com Okta
+                <span className="badge">SSO</span>
+              </button>
+              <button className="sso-btn" onClick={() => ssoLogin('saml')} disabled={loading}>
+                <span className="sso-mark"><SsoMark kind="saml"/></span>
+                SAML / Provedor corporativo
+                <span className="badge">empresa</span>
+              </button>
+            </div>
+          )}
+          {DEMO_MODE && <div className="divider">ou com email</div>}
 
-          <div className="divider">ou com email</div>
+          {!DEMO_MODE && <div className="divider">Acesse com sua conta</div>}
 
           <form onSubmit={submit}>
             <div className="field">

@@ -25,11 +25,12 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
   // POST /api/auth/login
   .post('/login',
     async ({ body, jwt, cookie: { auth }, set, request, server }) => {
-      // IP real: X-Forwarded-For (detrás de proxy) ou IP direto
-      const ip =
-        request.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
-        server?.requestIP(request)?.address ??
-        'unknown';
+      // IP real: X-Real-IP (setado pelo Nginx com $remote_addr — não spoofável pelo cliente)
+      // Fallback: último valor de X-Forwarded-For (adicionado pelo proxy, não pelo cliente)
+      const xRealIp = request.headers.get('x-real-ip')?.trim();
+      const xForwardedFor = request.headers.get('x-forwarded-for');
+      const lastForwardedIp = xForwardedFor?.split(',').at(-1)?.trim();
+      const ip = xRealIp ?? lastForwardedIp ?? server?.requestIP(request)?.address ?? 'unknown';
 
       // 5 tentativas por IP a cada 15 minutos
       if (!checkRateLimit(`login:${ip}`, 5, 15 * 60 * 1000)) {
@@ -76,7 +77,7 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
         value:    token,
         httpOnly: true,
         secure:   IS_PROD,   // HTTPS obrigatório em produção
-        sameSite: 'lax',
+        sameSite: 'strict',
         maxAge:   JWT_EXPIRES,
         path:     '/',
       });
@@ -122,7 +123,25 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
 
   // POST /api/auth/register
   .post('/register',
-    async ({ body, jwt, cookie: { auth }, set }) => {
+    async ({ body, jwt, cookie: { auth }, set, request, server }) => {
+      const xRealIp = request.headers.get('x-real-ip')?.trim();
+      const xForwardedFor = request.headers.get('x-forwarded-for');
+      const lastForwardedIp = xForwardedFor?.split(',').at(-1)?.trim();
+      const ip = xRealIp ?? lastForwardedIp ?? server?.requestIP(request)?.address ?? 'unknown';
+
+      // 3 registros por IP por hora
+      if (!checkRateLimit(`register:${ip}`, 3, 60 * 60 * 1000)) {
+        set.status = 429;
+        return { error: 'Muitas tentativas. Aguarde antes de tentar novamente.' };
+      }
+
+      // Registros públicos só são permitidos no primeiro uso (sem nenhum usuário no banco)
+      const [anyUser] = await sql`SELECT id FROM users LIMIT 1`;
+      if (anyUser) {
+        set.status = 403;
+        return { error: 'Registros públicos estão desabilitados. Contate o administrador.' };
+      }
+
       const { name, email, password } = body;
 
       const [existing] = await sql`SELECT id FROM users WHERE email = ${email} LIMIT 1`;
@@ -147,7 +166,7 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
         value:    token,
         httpOnly: true,
         secure:   IS_PROD,
-        sameSite: 'lax',
+        sameSite: 'strict',
         maxAge:   JWT_EXPIRES,
         path:     '/',
       });

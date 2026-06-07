@@ -971,8 +971,14 @@ button { font-family: inherit; cursor: pointer; border: 0; background: none; col
   box-shadow: var(--shadow-lg);
   width: 460px;
   max-width: 92vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   animation: slideUp 0.18s ease-out;
+}
+.modal-body {
+  overflow-y: auto;
 }
 @keyframes slideUp { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
 .modal-head {
@@ -1010,7 +1016,7 @@ button { font-family: inherit; cursor: pointer; border: 0; background: none; col
   color: var(--ink-2);
   margin-bottom: 6px;
 }
-.field input, .field select {
+.field input, .field select, .field textarea {
   width: 100%;
   padding: 9px 11px;
   border-radius: var(--radius-sm);
@@ -1020,11 +1026,44 @@ button { font-family: inherit; cursor: pointer; border: 0; background: none; col
   color: var(--ink);
   outline: none;
   transition: border-color 0.12s, box-shadow 0.12s;
+  box-sizing: border-box;
 }
-.field input:focus, .field select:focus {
+.field input:focus, .field select:focus, .field textarea:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
+.field textarea {
+  resize: none;
+  line-height: 1.5;
+  overflow-y: auto;
+}
+
+/* Toolbar de formatação rápida (ex: WhatsApp markdown) */
+.field-fmt-bar {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 4px;
+}
+.field-fmt-bar button {
+  padding: 3px 7px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel-2);
+  color: var(--ink-2);
+  cursor: pointer;
+  line-height: 1.4;
+  transition: background 0.1s, color 0.1s;
+}
+.field-fmt-bar button:hover { background: var(--accent-soft); color: var(--accent-ink); border-color: var(--accent-border); }
+.field-char-count {
+  font-size: 11px;
+  color: var(--ink-4);
+  text-align: right;
+  margin-top: 4px;
+}
+.field-char-count.warn { color: #e08030; }
+.field-char-count.danger { color: var(--rose-ink, #e55); }
 .field .hint { font-size: 11.5px; color: var(--ink-4); margin-top: 4px; }
 
 /* ------------ Toast ------------ */

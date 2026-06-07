@@ -7,18 +7,47 @@ import Pagination from '../components/pagination';
 const PAGE_SIZE = 15;
 const WPP_SERVER = import.meta.env.VITE_WPP_SERVER ?? 'http://localhost:21465/api';
 
+const MAX_CHARS = 1000;
+
 function SendMsgModal({ groups, onClose, toast }) {
   const [sessions,  setSessions]  = React.useState([]);
   const [sessionId, setSessionId] = React.useState('');
   const [message,   setMessage]   = React.useState('');
   const [sending,   setSending]   = React.useState(false);
   const [results,   setResults]   = React.useState(null);
+  const taRef = React.useRef(null);
 
   React.useEffect(() => {
     sessionsService.list({ status: 'connected' })
       .then(res => { setSessions(res.data ?? []); if (res.data?.length) setSessionId(res.data[0].id); })
       .catch(() => {});
   }, []);
+
+  // Auto-grow: ajusta height conforme o conteúdo
+  const handleChange = (e) => {
+    setMessage(e.target.value);
+    const ta = e.target;
+    ta.style.height = 'auto';
+    ta.style.height = Math.min(ta.scrollHeight, 240) + 'px';
+  };
+
+  // Insere formatação WhatsApp em volta da seleção (ou no cursor)
+  const fmt = (prefix, suffix = prefix) => {
+    const ta    = taRef.current;
+    if (!ta) return;
+    const start = ta.selectionStart;
+    const end   = ta.selectionEnd;
+    const sel   = message.slice(start, end);
+    const next  = message.slice(0, start) + prefix + (sel || 'texto') + suffix + message.slice(end);
+    setMessage(next);
+    requestAnimationFrame(() => {
+      ta.focus();
+      const cur = start + prefix.length + (sel || 'texto').length;
+      ta.setSelectionRange(cur, cur);
+      ta.style.height = 'auto';
+      ta.style.height = Math.min(ta.scrollHeight, 240) + 'px';
+    });
+  };
 
   const send = async (e) => {
     e.preventDefault();
@@ -43,6 +72,9 @@ function SendMsgModal({ groups, onClose, toast }) {
     finally   { setSending(false); }
   };
 
+  const remaining = MAX_CHARS - message.length;
+  const countCls  = remaining < 0 ? 'danger' : remaining < 100 ? 'warn' : '';
+
   if (results) return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
@@ -51,7 +83,11 @@ function SendMsgModal({ groups, onClose, toast }) {
           <p>{results.ok} de {groups.length} mensagens enviadas com sucesso.</p>
         </div>
         <div className="modal-body">
-          {results.err > 0 && <div style={{ color: 'var(--rose-ink)', fontSize: 13 }}>{results.err} falha(s) — verifique se a sessão está conectada e o grupo tem um JID válido.</div>}
+          {results.err > 0 && (
+            <div style={{ fontSize: 13, color: 'var(--rose-ink, #e55)', padding: '10px 12px', background: 'var(--rose-soft, #fff0f0)', borderRadius: 6, border: '1px solid var(--rose-border, #fcc)' }}>
+              {results.err} falha(s) — verifique se a sessão está conectada e os grupos têm JID válido.
+            </div>
+          )}
         </div>
         <div className="modal-foot">
           <button className="btn primary" onClick={onClose}>Fechar</button>
@@ -74,19 +110,46 @@ function SendMsgModal({ groups, onClose, toast }) {
               <option value="">Selecionar sessão…</option>
               {sessions.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
-            {sessions.length === 0 && <div style={{ fontSize: 12, color: 'var(--rose-ink)', marginTop: 4 }}>Nenhuma sessão conectada</div>}
+            {sessions.length === 0 && (
+              <div style={{ fontSize: 12, color: 'var(--rose-ink, #e55)', marginTop: 4 }}>
+                Nenhuma sessão conectada
+              </div>
+            )}
           </div>
+
           <div className="field">
             <label>Mensagem</label>
-            <textarea value={message} onChange={e => setMessage(e.target.value)}
-              rows={4} placeholder="Digite a mensagem…" required
-              style={{ resize: 'vertical', fontFamily: 'inherit', fontSize: 13.5 }}/>
+            {/* Toolbar de formatação WhatsApp */}
+            <div className="field-fmt-bar">
+              <button type="button" title="Negrito (*texto*)"      onClick={() => fmt('*')}>  <b>B</b>         </button>
+              <button type="button" title="Itálico (_texto_)"      onClick={() => fmt('_')}>  <i>I</i>         </button>
+              <button type="button" title="Tachado (~texto~)"      onClick={() => fmt('~')}>  <s>S</s>         </button>
+              <button type="button" title="Monoespaçado (```texto```)" onClick={() => fmt('```')}><span style={{ fontFamily: 'monospace', fontSize: 11 }}>{'<>'}</span></button>
+              <button type="button" title="Emoji 😊"               onClick={() => { setMessage(m => m + '😊'); taRef.current?.focus(); }}>😊</button>
+            </div>
+            <textarea
+              ref={taRef}
+              value={message}
+              onChange={handleChange}
+              placeholder="Digite a mensagem… Suporta formatação WhatsApp: *negrito*, _itálico_, ~tachado~"
+              required
+              maxLength={MAX_CHARS + 200}
+              style={{ minHeight: 100, maxHeight: 240 }}
+            />
+            <div className={`field-char-count ${countCls}`}>
+              {remaining < 0
+                ? `${Math.abs(remaining)} acima do limite`
+                : `${remaining} caracteres restantes`}
+            </div>
           </div>
         </div>
         <div className="modal-foot">
           <button type="button" className="btn secondary" onClick={onClose} disabled={sending}>Cancelar</button>
-          <button type="submit" className="btn primary" disabled={sending || !sessionId || !message.trim()}>
-            {sending ? 'Enviando…' : <><Ic.Send style={{ width: 13, height: 13 }}/> Enviar</>}
+          <button type="submit" className="btn primary"
+            disabled={sending || !sessionId || !message.trim() || message.length > MAX_CHARS}>
+            {sending
+              ? 'Enviando…'
+              : <><Ic.Send style={{ width: 13, height: 13 }}/> Enviar para {groups.length} grupo{groups.length !== 1 ? 's' : ''}</>}
           </button>
         </div>
       </form>

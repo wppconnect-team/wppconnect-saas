@@ -159,8 +159,8 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
       }
 
       const [user] = await sql<{ id: string; name: string; email: string }[]>`
-        INSERT INTO users (name, email, password_hash)
-        VALUES (${name}, ${email}, crypt(${password}, gen_salt('bf', 10)))
+        INSERT INTO users (name, email, password_hash, must_change_password)
+        VALUES (${name}, ${email}, crypt(${password}, gen_salt('bf', 10)), TRUE)
         RETURNING id, name, email
       `;
 
@@ -180,7 +180,7 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
       });
 
       set.status = 201;
-      return { user: { id: user.id, name: user.name, email: user.email }, expiresIn: JWT_EXPIRES };
+      return { user: { id: user.id, name: user.name, email: user.email }, mustChangePassword: true, expiresIn: JWT_EXPIRES };
     },
     {
       body: t.Object({

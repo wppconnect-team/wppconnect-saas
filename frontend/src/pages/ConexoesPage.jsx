@@ -8,6 +8,56 @@ import Pagination from '../components/pagination';
 
 const PAGE_SIZE = 8;
 
+function SessionConfigModal({ session, onClose, onSave }) {
+  const [name, setName]   = React.useState(session.name);
+  const [tag,  setTag]    = React.useState(session.tag ?? '');
+  const [phone, setPhone] = React.useState(session.phone ?? '');
+  const [busy, setBusy]   = React.useState(false);
+  const [err,  setErr]    = React.useState(null);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setBusy(true); setErr(null);
+    try {
+      const res = await sessionsService.update(session.id, { name: name.trim(), tag: tag.trim(), phone: phone.trim() });
+      onSave(res.data);
+    } catch (e) { setErr(e?.error ?? 'Erro ao salvar'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <form className="modal" onClick={e => e.stopPropagation()} onSubmit={submit}>
+        <div className="modal-head">
+          <h3>Configurar sessão</h3>
+          <p>Edite as informações da sessão <strong>{session.id}</strong>.</p>
+        </div>
+        <div className="modal-body">
+          <div className="field">
+            <label>Nome</label>
+            <input autoFocus value={name} onChange={e => setName(e.target.value)} required/>
+          </div>
+          <div className="field">
+            <label>Número (com DDI)</label>
+            <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="+5511987654321"/>
+          </div>
+          <div className="field">
+            <label>Tag</label>
+            <input value={tag} onChange={e => setTag(e.target.value)} placeholder="atendimento, marketing…"/>
+          </div>
+          {err && <div style={{ color: 'var(--rose-ink)', fontSize: 13 }}>{err}</div>}
+        </div>
+        <div className="modal-foot">
+          <button type="button" className="btn secondary" onClick={onClose} disabled={busy}>Cancelar</button>
+          <button type="submit" className="btn primary" disabled={busy}>
+            <Ic.Check/> {busy ? 'Salvando…' : 'Salvar'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 export default function ConexoesPage({ toast }) {
   const [sessions, setSessions]     = React.useState([]);
   const [loading, setLoading]       = React.useState(true);
@@ -18,6 +68,7 @@ export default function ConexoesPage({ toast }) {
   const [modalOpen, setModalOpen]   = React.useState(false);
   const [qrSession, setQrSession]   = React.useState(null);
   const [page, setPage]             = React.useState(1);
+  const [configSession, setConfigSession] = React.useState(null);
 
   const fetchSessions = React.useCallback(() => {
     setLoading(true);
@@ -91,8 +142,15 @@ export default function ConexoesPage({ toast }) {
       } catch {
         setQrSession(session); // fallback sem wppToken
       }
-    } else if (action === 'status')     { toast(`Status: ${session.status}`);
-    } else if (action === 'configurar') { toast('Abrindo configuração de produtos…');
+    } else if (action === 'status') {
+      try {
+        const res = await sessionsService.get(session.id);
+        const s   = res.data;
+        setSessions(l => l.map(x => x.id === s.id ? { ...x, status: s.status, messagesToday: s.messagesToday } : x));
+        const labels = { connected: 'Conectada', qr: 'Aguardando QR', pending: 'Pendente', offline: 'Desconectada' };
+        toast(`${session.name}: ${labels[s.status] ?? s.status}`);
+      } catch { toast('Erro ao verificar status', 'error'); }
+    } else if (action === 'configurar') { setConfigSession(session);
     } else if (action === 'copy') {
       try {
         const res = await sessionsService.get(session.id);
@@ -368,15 +426,28 @@ export default function ConexoesPage({ toast }) {
         />
       )}
 
+      {/* Modal configurar sessão */}
+      {configSession && (
+        <SessionConfigModal
+          session={configSession}
+          onClose={() => setConfigSession(null)}
+          onSave={(updated) => {
+            setSessions(l => l.map(s => s.id === updated.id ? { ...s, ...updated } : s));
+            setConfigSession(null);
+            toast('Sessão atualizada');
+          }}
+        />
+      )}
+
       {/* Modal nova sessão */}
       {modalOpen && (
         <NewSessionModal
           onClose={() => setModalOpen(false)}
           onCreate={(s) => {
             setSessions(list => [s, ...list]);
-            setActiveId(s.id); setModalOpen(false);
-            setMode('qr'); setQrVariant(v => v + 1); setTimer(45);
-            toast(`Sessão "${s.name}" criada. Escaneie o QR.`);
+            setActiveId(s.id);
+            setModalOpen(false);
+            toast(`Sessão "${s.name}" criada. Clique nela para conectar.`);
           }}
         />
       )}

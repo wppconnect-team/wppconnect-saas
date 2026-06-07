@@ -5,7 +5,9 @@ import Pagination from '../components/pagination';
 
 const PAGE_SIZE = 10;
 
-const CURL_EXAMPLE = `curl -X POST https://api.wppconnect.io/v1/messages \\
+const BASE_URL = `${window.location.origin}/api`;
+
+const CURL_EXAMPLE = `curl -X POST ${window.location.origin}/api/messages \\
   -H "Authorization: Bearer wpp_live_••••••••••••••••••••••••••••••••••••••••" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -225,7 +227,7 @@ export default function ApiPage({ toast }) {
   };
 
   const copyBaseUrl = () => {
-    navigator.clipboard.writeText('https://api.wppconnect.io/v1').then(() => toast?.('URL copiada'));
+    navigator.clipboard.writeText(BASE_URL).then(() => toast?.('URL copiada'));
   };
 
   const filtered = tokens.filter(t => !query || t.name.toLowerCase().includes(query.toLowerCase()));
@@ -265,7 +267,7 @@ export default function ApiPage({ toast }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: 'var(--panel-2)', border: '1px solid var(--border)', marginBottom: 24 }}>
         <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-4)', textTransform: 'uppercase', letterSpacing: '0.05em', flexShrink: 0 }}>Base URL</span>
         <span style={{ flex: 1, fontFamily: 'JetBrains Mono, monospace', fontSize: 13, color: 'var(--accent-ink)' }}>
-          https://api.wppconnect.io/v1
+          {BASE_URL}
         </span>
         <button className="btn ghost" onClick={copyBaseUrl}><Ic.Clipboard/> Copiar</button>
       </div>

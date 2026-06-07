@@ -31,6 +31,7 @@ ehthumbs.db
 *.swo
 *.sublime-project
 *.sublime-workspace
+*.claude
 
 # Testes
 coverage/

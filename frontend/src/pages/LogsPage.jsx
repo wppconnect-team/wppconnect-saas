@@ -26,6 +26,25 @@ export default function LogsPage() {
   const [query, setQuery]     = React.useState('');
   const [page, setPage]       = React.useState(1);
   const [sourceFilter, setSourceFilter] = React.useState('');
+  const [live, setLive]       = React.useState(false);
+
+  React.useEffect(() => {
+    const es = new EventSource('/api/logs/stream', { withCredentials: true });
+    es.onopen    = () => setLive(true);
+    es.onerror   = () => setLive(false);
+    es.onmessage = (e) => {
+      try {
+        const log = JSON.parse(e.data);
+        setRows(prev => [log, ...prev].slice(0, 500));
+        setCounts(prev => ({
+          ...prev,
+          total: (prev.total ?? 0) + 1,
+          [log.level]: (prev[log.level] ?? 0) + 1,
+        }));
+      } catch {}
+    };
+    return () => { es.close(); setLive(false); };
+  }, []);
 
   // Lê filtro de fonte passado por sessionStorage (ex: de Webhooks "Ver logs")
   React.useEffect(() => {
@@ -95,9 +114,11 @@ export default function LogsPage() {
           </div>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--ink-3)' }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', animation: 'pulse 2s infinite' }}/>
-            ao vivo
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: live ? 'var(--ink-2)' : 'var(--ink-4)' }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%',
+              background: live ? 'var(--accent)' : 'var(--ink-4)',
+              animation: live ? 'pulse 2s infinite' : 'none' }}/>
+            {live ? 'ao vivo' : 'conectando…'}
           </div>
           <button className="btn secondary" onClick={handleExportCSV}><Ic.Download/> Exportar</button>
         </div>

@@ -1,5 +1,5 @@
 import { api } from './api';
 
 export const dashboardService = {
-  get: () => api.get('/api/dashboard'),
+  get: (period = '7d') => api.get(`/api/dashboard?period=${period}`),
 };

@@ -101,14 +101,10 @@ function MembrosSection({ toast, currentUserId }) {
   React.useEffect(() => { load(); }, [load]);
 
   const handleInvite = async ({ name, email, role }) => {
-    try {
-      const res = await membersService.invite({ name, email, role });
-      setMembers(m => [...m, res.data]);
-      setCreds({ name: res.data.name, email: res.data.email, tempPassword: res.tempPassword });
-      setInviteOpen(false);
-    } catch (e) {
-      toast?.(e?.error ?? 'Erro ao convidar membro', 'error');
-    }
+    const res = await membersService.invite({ name, email, role });
+    setMembers(m => [...m, res.data]);
+    setCreds({ name: res.data.name, email: res.data.email, tempPassword: res.tempPassword });
+    setInviteOpen(false);
   };
 
   const handleRole = async (id, role) => {
@@ -193,28 +189,30 @@ function MembrosSection({ toast, currentUserId }) {
       {/* Modal credenciais geradas */}
       {creds && (
         <div className="modal-backdrop" onClick={() => setCreds(null)}>
-          <div className="modal" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3 className="modal-title">Membro convidado</h3>
-              <button className="icon-btn" onClick={() => setCreds(null)}><Ic.X/></button>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <h3>Membro convidado</h3>
+              <p>Compartilhe estas credenciais com <strong>{creds.name}</strong>. A senha é exibida apenas uma vez.</p>
             </div>
-            <div style={{ padding: '0 24px 20px' }}>
-              <p style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 16 }}>
-                Compartilhe as credenciais abaixo com <strong>{creds.name}</strong>. A senha temporária é exibida apenas uma vez.
-              </p>
-              <div style={{ background: 'var(--panel-2)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 14px', marginBottom: 8 }}>
-                <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginBottom: 4 }}>E-mail</div>
-                <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13.5, color: 'var(--ink-1)' }}>{creds.email}</div>
+            <div className="modal-body">
+              <div className="field">
+                <label>E-mail de acesso</label>
+                <input readOnly value={creds.email} className="mono" onClick={e => e.target.select()}/>
               </div>
-              <div style={{ background: 'var(--accent-soft)', border: '1px solid var(--accent-border)', borderRadius: 8, padding: '12px 14px' }}>
-                <div style={{ fontSize: 11.5, color: 'var(--accent-ink)', opacity: 0.7, marginBottom: 4 }}>Senha temporária</div>
-                <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 18, fontWeight: 700, color: 'var(--accent-ink)', letterSpacing: '0.05em' }}>{creds.tempPassword}</div>
+              <div className="field">
+                <label>Senha temporária</label>
+                <input readOnly value={creds.tempPassword} className="mono"
+                  style={{ fontSize: 18, fontWeight: 700, letterSpacing: '0.06em', color: 'var(--accent-ink)' }}
+                  onClick={e => e.target.select()}/>
               </div>
-              <button className="btn primary" style={{ marginTop: 20, width: '100%' }} onClick={() => {
+            </div>
+            <div className="modal-foot">
+              <button className="btn secondary" onClick={() => setCreds(null)}>Fechar</button>
+              <button className="btn primary" onClick={() => {
                 navigator.clipboard.writeText(`Login: ${creds.email}\nSenha: ${creds.tempPassword}`);
                 setCreds(null);
               }}>
-                <Ic.Clipboard style={{ width: 13, height: 13 }}/> Copiar e fechar
+                <Ic.Clipboard style={{ width: 13, height: 13 }}/> Copiar credenciais
               </button>
             </div>
           </div>
@@ -229,25 +227,32 @@ function InviteModal({ onClose, onSubmit }) {
   const [email, setEmail] = React.useState('');
   const [role,  setRole]  = React.useState('editor');
   const [busy,  setBusy]  = React.useState(false);
+  const [error, setError] = React.useState(null);
 
   const submit = async (e) => {
     e.preventDefault();
     setBusy(true);
-    await onSubmit({ name, email, role });
-    setBusy(false);
+    setError(null);
+    try {
+      await onSubmit({ name, email, role });
+    } catch (err) {
+      setError(err?.error ?? 'Erro ao convidar membro');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3 className="modal-title">Convidar membro</h3>
-          <button className="icon-btn" onClick={onClose}><Ic.X/></button>
+      <form className="modal" onClick={e => e.stopPropagation()} onSubmit={submit}>
+        <div className="modal-head">
+          <h3>Convidar membro</h3>
+          <p>Uma conta será criada com senha temporária para o novo membro.</p>
         </div>
-        <form onSubmit={submit} style={{ padding: '0 24px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div className="modal-body">
           <div className="field">
             <label>Nome</label>
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="Ex: Ana Souza" required/>
+            <input autoFocus value={name} onChange={e => setName(e.target.value)} placeholder="Ex: Ana Souza" required/>
           </div>
           <div className="field">
             <label>E-mail</label>
@@ -259,14 +264,15 @@ function InviteModal({ onClose, onSubmit }) {
               {ROLE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label} — {o.desc}</option>)}
             </select>
           </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-            <button type="submit" className="btn primary" disabled={busy} style={{ flex: 1 }}>
-              {busy ? 'Criando…' : 'Criar conta e convidar'}
-            </button>
-            <button type="button" className="btn secondary" onClick={onClose}>Cancelar</button>
-          </div>
-        </form>
-      </div>
+          {error && <div style={{ color: 'var(--rose-ink)', fontSize: 13 }}>{error}</div>}
+        </div>
+        <div className="modal-foot">
+          <button type="button" className="btn secondary" onClick={onClose} disabled={busy}>Cancelar</button>
+          <button type="submit" className="btn primary" disabled={busy || !name.trim() || !email.trim()}>
+            <Ic.Check/> {busy ? 'Criando…' : 'Criar e convidar'}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

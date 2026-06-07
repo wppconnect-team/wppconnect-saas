@@ -55,6 +55,63 @@ export const logRoutes = new Elysia({ prefix: '/api/logs' })
     }
   )
 
+  // GET /api/logs/stream — Server-Sent Events (logs em tempo real)
+  .get('/stream', async ({ userId }) => {
+    let lastId = 0;
+    const [latest] = await sql<{ id: number }[]>`
+      SELECT id FROM logs WHERE user_id = ${userId} ORDER BY id DESC LIMIT 1
+    `;
+    if (latest) lastId = Number(latest.id);
+
+    const enc    = new TextEncoder();
+    let   active = true;
+
+    const stream = new ReadableStream({
+      async start(controller) {
+        const enq = (s: string) => {
+          try { controller.enqueue(enc.encode(s)); return true; }
+          catch { active = false; return false; }
+        };
+
+        if (!enq(': connected\n\n')) return;
+
+        while (active) {
+          await new Promise<void>(r => setTimeout(r, 2000));
+          if (!active) break;
+
+          try {
+            const rows = await sql<{
+              id: number; level: string; message: string; source: string; createdAt: string;
+            }[]>`
+              SELECT id, level, message, source,
+                to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "createdAt"
+              FROM logs
+              WHERE user_id = ${userId} AND id > ${lastId}
+              ORDER BY id ASC LIMIT 50
+            `;
+            for (const row of rows) {
+              if (Number(row.id) > lastId) lastId = Number(row.id);
+              if (!enq(`data: ${JSON.stringify(row)}\n\n`)) return;
+            }
+            if (!enq(': heartbeat\n\n')) return;
+          } catch { active = false; break; }
+        }
+
+        try { controller.close(); } catch {}
+      },
+      cancel() { active = false; },
+    });
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type':      'text/event-stream',
+        'Cache-Control':     'no-cache',
+        'Connection':        'keep-alive',
+        'X-Accel-Buffering': 'no',
+      },
+    });
+  })
+
   // POST /api/logs — inserir entrada de log
   .post('/',
     async ({ body, set, userId }) => {

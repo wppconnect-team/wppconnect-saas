@@ -1,7 +1,97 @@
 import React from 'react';
 import Ic from '../components/icons';
 import { contactsService } from '../services/contacts';
+import { sessionsService } from '../services/sessions';
 import Pagination from '../components/pagination';
+
+const WPP_SERVER = import.meta.env.VITE_WPP_SERVER ?? 'http://localhost:21465/api';
+
+function SendMsgModal({ contacts, onClose, toast }) {
+  const [sessions,    setSessions]    = React.useState([]);
+  const [sessionId,   setSessionId]   = React.useState('');
+  const [message,     setMessage]     = React.useState('');
+  const [sending,     setSending]     = React.useState(false);
+  const [results,     setResults]     = React.useState(null);
+
+  React.useEffect(() => {
+    sessionsService.list({ status: 'connected' })
+      .then(res => { setSessions(res.data ?? []); if (res.data?.length) setSessionId(res.data[0].id); })
+      .catch(() => {});
+  }, []);
+
+  const send = async (e) => {
+    e.preventDefault();
+    if (!sessionId || !message.trim()) return;
+    setSending(true);
+    try {
+      const res = await sessionsService.get(sessionId);
+      const token = res.data?.wppToken ?? sessionId;
+      const settled = await Promise.allSettled(
+        contacts.map(c =>
+          fetch(`${WPP_SERVER}/${sessionId}/send-message`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone: c.phone.replace(/\D/g,''), message: message.trim(), isGroup: false }),
+          })
+        )
+      );
+      const ok  = settled.filter(r => r.status === 'fulfilled').length;
+      const err = settled.filter(r => r.status === 'rejected').length;
+      setResults({ ok, err });
+    } catch { setResults({ ok: 0, err: contacts.length }); }
+    finally { setSending(false); }
+  };
+
+  if (results) return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-head">
+          <h3>Envio concluído</h3>
+          <p>{results.ok} de {contacts.length} mensagens enviadas com sucesso.</p>
+        </div>
+        <div className="modal-body">
+          {results.err > 0 && <div style={{ color: 'var(--rose-ink)', fontSize: 13 }}>{results.err} falha(s) — verifique se a sessão está conectada e o número está correto.</div>}
+        </div>
+        <div className="modal-foot">
+          <button className="btn primary" onClick={onClose}>Fechar</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <form className="modal" onClick={e => e.stopPropagation()} onSubmit={send}>
+        <div className="modal-head">
+          <h3>Enviar mensagem</h3>
+          <p>Para {contacts.length} contato{contacts.length !== 1 ? 's' : ''} selecionado{contacts.length !== 1 ? 's' : ''}.</p>
+        </div>
+        <div className="modal-body">
+          <div className="field">
+            <label>Sessão conectada</label>
+            <select value={sessionId} onChange={e => setSessionId(e.target.value)} required>
+              <option value="">Selecionar sessão…</option>
+              {sessions.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            {sessions.length === 0 && <div style={{ fontSize: 12, color: 'var(--rose-ink)', marginTop: 4 }}>Nenhuma sessão conectada</div>}
+          </div>
+          <div className="field">
+            <label>Mensagem</label>
+            <textarea value={message} onChange={e => setMessage(e.target.value)}
+              rows={4} placeholder="Digite a mensagem…" required
+              style={{ resize: 'vertical', fontFamily: 'inherit', fontSize: 13.5 }}/>
+          </div>
+        </div>
+        <div className="modal-foot">
+          <button type="button" className="btn secondary" onClick={onClose} disabled={sending}>Cancelar</button>
+          <button type="submit" className="btn primary" disabled={sending || !sessionId || !message.trim()}>
+            {sending ? 'Enviando…' : <><Ic.Send style={{ width: 13, height: 13 }}/> Enviar</>}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
 
 const PAGE_SIZE = 15;
 
@@ -82,7 +172,10 @@ export default function ContatosPage({ toast }) {
   const [selected, setSelected]   = React.useState(new Set());
   const [query, setQuery]         = React.useState('');
   const [page, setPage]           = React.useState(1);
-  const [modalContact, setModalContact] = React.useState(null); // null=fechado | 'new' | obj
+  const [modalContact, setModalContact] = React.useState(null);
+  const [tagFilter,    setTagFilter]    = React.useState(new Set());
+  const [tagPopover,   setTagPopover]   = React.useState(false);
+  const [sendOpen,     setSendOpen]     = React.useState(false);
 
   const refetch = React.useCallback(() => {
     setLoading(true);
@@ -94,15 +187,21 @@ export default function ContatosPage({ toast }) {
 
   React.useEffect(() => { refetch(); }, [refetch]);
 
-  const filtered = contacts.filter(c =>
-    c.name.toLowerCase().includes(query.toLowerCase()) || c.phone.includes(query)
-  );
+  const allTags = React.useMemo(() =>
+    [...new Set(contacts.flatMap(c => c.tags ?? []))].sort(), [contacts]);
+
+  const filtered = contacts.filter(c => {
+    const q = query.toLowerCase();
+    const matchQ   = !q || c.name.toLowerCase().includes(q) || c.phone.includes(q);
+    const matchTag = tagFilter.size === 0 || [...tagFilter].some(t => (c.tags ?? []).includes(t));
+    return matchQ && matchTag;
+  });
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated  = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   React.useEffect(() => { if (page > totalPages) setPage(totalPages); }, [totalPages]);
-  React.useEffect(() => { setPage(1); }, [query]);
+  React.useEffect(() => { setPage(1); }, [query, tagFilter]);
 
   const toggle    = (id) => setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const toggleAll = () => setSelected(s => s.size === filtered.length && filtered.length > 0 ? new Set() : new Set(filtered.map(c => c.id)));
@@ -187,12 +286,45 @@ export default function ContatosPage({ toast }) {
             <Ic.Search style={{ color: 'var(--ink-4)' }}/>
             <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar por nome ou telefone…"/>
           </div>
-          <button className="btn ghost"><Ic.Tag/> Tags</button>
-          <button className="btn ghost"><Ic.Folder/> Listas</button>
+          {/* Tags filter */}
+          <div style={{ position: 'relative' }}>
+            <button className={'btn ' + (tagFilter.size > 0 ? 'secondary' : 'ghost')}
+              onClick={() => setTagPopover(v => !v)}>
+              <Ic.Tag/> Tags {tagFilter.size > 0 && <span className="badge">{tagFilter.size}</span>}
+            </button>
+            {tagPopover && (
+              <div style={{ position:'absolute', top:'110%', left:0, zIndex:20, background:'var(--panel-1)',
+                border:'1px solid var(--border)', borderRadius:8, boxShadow:'0 4px 16px rgba(0,0,0,0.12)',
+                minWidth:180, padding:'8px 4px' }}>
+                {allTags.length === 0
+                  ? <div style={{ padding:'8px 12px', fontSize:13, color:'var(--ink-4)' }}>Nenhuma tag</div>
+                  : allTags.map(tag => (
+                    <label key={tag} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 12px',
+                      cursor:'pointer', borderRadius:6, background: tagFilter.has(tag) ? 'var(--accent-soft)' : 'transparent' }}>
+                      <input type="checkbox" checked={tagFilter.has(tag)} onChange={() =>
+                        setTagFilter(s => { const n = new Set(s); n.has(tag) ? n.delete(tag) : n.add(tag); return n; })}/>
+                      <span className="chip" style={{ fontSize:12 }}>{tag}</span>
+                    </label>
+                  ))
+                }
+                {tagFilter.size > 0 && (
+                  <button style={{ width:'100%', padding:'6px 12px', marginTop:4, background:'none', border:'none',
+                    borderTop:'1px solid var(--border)', cursor:'pointer', fontSize:12, color:'var(--ink-3)', textAlign:'left' }}
+                    onClick={() => { setTagFilter(new Set()); setTagPopover(false); }}>
+                    Limpar filtro
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
           <div style={{ marginLeft: 'auto', fontSize: 12.5, color: 'var(--ink-3)' }}>
             {selected.size > 0 ? `${selected.size} selecionados` : `${filtered.length} contato${filtered.length !== 1 ? 's' : ''}`}
           </div>
-          {selected.size > 0 && <button className="btn accent"><Ic.Send/> Enviar mensagem</button>}
+          {selected.size > 0 && (
+            <button className="btn accent" onClick={() => setSendOpen(true)}>
+              <Ic.Send style={{ width:13, height:13 }}/> Enviar mensagem
+            </button>
+          )}
         </div>
 
         <table className="data-table">
@@ -263,6 +395,13 @@ export default function ContatosPage({ toast }) {
           contact={modalContact === 'new' ? null : modalContact}
           onClose={() => setModalContact(null)}
           onSave={handleSave}
+        />
+      )}
+      {sendOpen && (
+        <SendMsgModal
+          contacts={contacts.filter(c => selected.has(c.id))}
+          onClose={() => setSendOpen(false)}
+          toast={toast}
         />
       )}
     </>

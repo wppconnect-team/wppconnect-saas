@@ -1,9 +1,98 @@
 import React from 'react';
 import Ic from '../components/icons';
 import { groupsService } from '../services/groups';
+import { sessionsService } from '../services/sessions';
 import Pagination from '../components/pagination';
 
 const PAGE_SIZE = 15;
+const WPP_SERVER = import.meta.env.VITE_WPP_SERVER ?? 'http://localhost:21465/api';
+
+function SendMsgModal({ groups, onClose, toast }) {
+  const [sessions,  setSessions]  = React.useState([]);
+  const [sessionId, setSessionId] = React.useState('');
+  const [message,   setMessage]   = React.useState('');
+  const [sending,   setSending]   = React.useState(false);
+  const [results,   setResults]   = React.useState(null);
+
+  React.useEffect(() => {
+    sessionsService.list({ status: 'connected' })
+      .then(res => { setSessions(res.data ?? []); if (res.data?.length) setSessionId(res.data[0].id); })
+      .catch(() => {});
+  }, []);
+
+  const send = async (e) => {
+    e.preventDefault();
+    if (!sessionId || !message.trim()) return;
+    setSending(true);
+    try {
+      const res   = await sessionsService.get(sessionId);
+      const token = res.data?.wppToken ?? sessionId;
+      const settled = await Promise.allSettled(
+        groups.map(g =>
+          fetch(`${WPP_SERVER}/${sessionId}/send-message`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone: g.phone ?? g.id, message: message.trim(), isGroup: true }),
+          })
+        )
+      );
+      const ok  = settled.filter(r => r.status === 'fulfilled').length;
+      const err = settled.filter(r => r.status === 'rejected').length;
+      setResults({ ok, err });
+    } catch { setResults({ ok: 0, err: groups.length }); }
+    finally   { setSending(false); }
+  };
+
+  if (results) return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-head">
+          <h3>Envio concluído</h3>
+          <p>{results.ok} de {groups.length} mensagens enviadas com sucesso.</p>
+        </div>
+        <div className="modal-body">
+          {results.err > 0 && <div style={{ color: 'var(--rose-ink)', fontSize: 13 }}>{results.err} falha(s) — verifique se a sessão está conectada e o grupo tem um JID válido.</div>}
+        </div>
+        <div className="modal-foot">
+          <button className="btn primary" onClick={onClose}>Fechar</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <form className="modal" onClick={e => e.stopPropagation()} onSubmit={send}>
+        <div className="modal-head">
+          <h3>Enviar mensagem</h3>
+          <p>Para {groups.length} grupo{groups.length !== 1 ? 's' : ''} selecionado{groups.length !== 1 ? 's' : ''}.</p>
+        </div>
+        <div className="modal-body">
+          <div className="field">
+            <label>Sessão conectada</label>
+            <select value={sessionId} onChange={e => setSessionId(e.target.value)} required>
+              <option value="">Selecionar sessão…</option>
+              {sessions.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            {sessions.length === 0 && <div style={{ fontSize: 12, color: 'var(--rose-ink)', marginTop: 4 }}>Nenhuma sessão conectada</div>}
+          </div>
+          <div className="field">
+            <label>Mensagem</label>
+            <textarea value={message} onChange={e => setMessage(e.target.value)}
+              rows={4} placeholder="Digite a mensagem…" required
+              style={{ resize: 'vertical', fontFamily: 'inherit', fontSize: 13.5 }}/>
+          </div>
+        </div>
+        <div className="modal-foot">
+          <button type="button" className="btn secondary" onClick={onClose} disabled={sending}>Cancelar</button>
+          <button type="submit" className="btn primary" disabled={sending || !sessionId || !message.trim()}>
+            {sending ? 'Enviando…' : <><Ic.Send style={{ width: 13, height: 13 }}/> Enviar</>}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
 
 function GroupModal({ group, onClose, onSave }) {
   const [name,              setName]              = React.useState(group?.name              ?? '');
@@ -94,6 +183,9 @@ export default function GruposPage({ toast }) {
   const [query, setQuery]         = React.useState('');
   const [page, setPage]           = React.useState(1);
   const [modalGroup, setModalGroup] = React.useState(null); // null=fechado | 'new' | obj
+  const [tagFilter,  setTagFilter]  = React.useState(new Set());
+  const [tagPopover, setTagPopover] = React.useState(false);
+  const [sendOpen,   setSendOpen]   = React.useState(false);
 
   const refetch = React.useCallback(() => {
     setLoading(true);
@@ -105,16 +197,21 @@ export default function GruposPage({ toast }) {
 
   React.useEffect(() => { refetch(); }, [refetch]);
 
-  const filtered = groups.filter(g =>
-    g.name.toLowerCase().includes(query.toLowerCase()) ||
-    (g.description ?? '').toLowerCase().includes(query.toLowerCase())
-  );
+  const allTags = React.useMemo(() =>
+    [...new Set(groups.flatMap(g => g.tags ?? []))].sort(), [groups]);
+
+  const filtered = groups.filter(g => {
+    const q       = query.toLowerCase();
+    const matchQ  = !q || g.name.toLowerCase().includes(q) || (g.description ?? '').toLowerCase().includes(q);
+    const matchTag = tagFilter.size === 0 || [...tagFilter].some(t => (g.tags ?? []).includes(t));
+    return matchQ && matchTag;
+  });
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated  = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   React.useEffect(() => { if (page > totalPages) setPage(totalPages); }, [totalPages]);
-  React.useEffect(() => { setPage(1); }, [query]);
+  React.useEffect(() => { setPage(1); }, [query, tagFilter]);
 
   const toggle    = (id) => setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const toggleAll = () => setSelected(s =>
@@ -202,12 +299,44 @@ export default function GruposPage({ toast }) {
             <Ic.Search style={{ color: 'var(--ink-4)' }}/>
             <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar por nome ou descrição…"/>
           </div>
-          <button className="btn ghost"><Ic.Tag/> Tags</button>
+          {/* Tags filter */}
+          <div style={{ position: 'relative' }}>
+            <button className={'btn ' + (tagFilter.size > 0 ? 'secondary' : 'ghost')}
+              onClick={() => setTagPopover(v => !v)}>
+              <Ic.Tag/> Tags {tagFilter.size > 0 && <span className="badge">{tagFilter.size}</span>}
+            </button>
+            {tagPopover && (
+              <div style={{ position: 'absolute', top: '110%', left: 0, zIndex: 20, background: 'var(--panel-1)',
+                border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+                minWidth: 180, padding: '8px 4px' }}>
+                {allTags.length === 0
+                  ? <div style={{ padding: '8px 12px', fontSize: 13, color: 'var(--ink-4)' }}>Nenhuma tag</div>
+                  : allTags.map(tag => (
+                    <label key={tag} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px',
+                      cursor: 'pointer', borderRadius: 6, background: tagFilter.has(tag) ? 'var(--accent-soft)' : 'transparent' }}>
+                      <input type="checkbox" checked={tagFilter.has(tag)} onChange={() =>
+                        setTagFilter(s => { const n = new Set(s); n.has(tag) ? n.delete(tag) : n.add(tag); return n; })}/>
+                      <span className="chip" style={{ fontSize: 12 }}>{tag}</span>
+                    </label>
+                  ))
+                }
+                {tagFilter.size > 0 && (
+                  <button style={{ width: '100%', padding: '6px 12px', marginTop: 4, background: 'none', border: 'none',
+                    borderTop: '1px solid var(--border)', cursor: 'pointer', fontSize: 12, color: 'var(--ink-3)', textAlign: 'left' }}
+                    onClick={() => { setTagFilter(new Set()); setTagPopover(false); }}>
+                    Limpar filtro
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
           <div style={{ marginLeft: 'auto', fontSize: 12.5, color: 'var(--ink-3)' }}>
             {selected.size > 0 ? `${selected.size} selecionados` : `${filtered.length} grupos`}
           </div>
           {selected.size > 0 && (
-            <button className="btn accent"><Ic.Send/> Enviar mensagem</button>
+            <button className="btn accent" onClick={() => setSendOpen(true)}>
+              <Ic.Send style={{ width: 13, height: 13 }}/> Enviar mensagem
+            </button>
           )}
         </div>
 
@@ -286,6 +415,13 @@ export default function GruposPage({ toast }) {
           group={modalGroup === 'new' ? null : modalGroup}
           onClose={() => setModalGroup(null)}
           onSave={handleSave}
+        />
+      )}
+      {sendOpen && (
+        <SendMsgModal
+          groups={groups.filter(g => selected.has(g.id))}
+          onClose={() => setSendOpen(false)}
+          toast={toast}
         />
       )}
     </>

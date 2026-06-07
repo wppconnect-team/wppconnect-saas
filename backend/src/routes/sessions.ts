@@ -1,6 +1,10 @@
 import { Elysia, t } from 'elysia';
 import { authPlugin } from '../plugins/auth';
 import { sql } from '../db';
+import { insertLog } from '../lib/log';
+
+const WPP_SERVER     = process.env.WPP_SERVER     ?? 'http://localhost:21465/api';
+const WPP_SECRET_KEY = process.env.WPP_SECRET_KEY ?? 'THISISMYSECURETOKEN';
 
 export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
   .use(authPlugin)
@@ -13,12 +17,16 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
       const rows = await sql<{
         id: string; name: string; phone: string; status: string;
         tag: string; messagesToday: number; lastActivity: string; created: string;
+        wppToken: string; webhook: string; proxy: unknown;
       }[]>`
         SELECT
           id, name, phone, status, tag,
           messages_today                         AS "messagesToday",
           last_activity                          AS "lastActivity",
-          TO_CHAR(created_at, 'DD/MM/YYYY')      AS created
+          TO_CHAR(created_at, 'DD/MM/YYYY')      AS created,
+          wpp_token                              AS "wppToken",
+          webhook,
+          proxy
         FROM sessions
         WHERE
           (${status ?? null}::text IS NULL OR status = ${status ?? null}::text)
@@ -54,33 +62,61 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
   // POST /api/sessions — criar sessão
   .post('/',
     async ({ body, set }) => {
-      const { id, name, phone, tag } = body;
+      const { id, name, phone, tag, webhook, proxy } = body;
+      const sessionId = id ?? 'wa_' + Math.random().toString(36).slice(2, 6);
 
-      const [session] = await sql<{ id: string }[]>`
-        INSERT INTO sessions (id, name, phone, tag, status)
+      // Gera token no servidor WppConnect
+      let wppToken = '';
+      try {
+        const res = await fetch(
+          `${WPP_SERVER}/${sessionId}/${WPP_SECRET_KEY}/generate-token`,
+          { method: 'POST' }
+        );
+        if (res.ok) {
+          const data = await res.json() as { token?: string };
+          wppToken = data.token ?? '';
+        }
+      } catch (err) {
+        console.error('[WppConnect] generate-token falhou:', err);
+      }
+
+      const [session] = await sql`
+        INSERT INTO sessions (id, name, phone, tag, status, wpp_token, webhook, proxy)
         VALUES (
-          ${id ?? 'wa_' + Math.random().toString(36).slice(2, 6)},
+          ${sessionId},
           ${name},
           ${phone ?? '—'},
           ${tag ?? 'atendimento'},
-          'qr'
+          'qr',
+          ${wppToken},
+          ${webhook ?? ''},
+          ${proxy ? sql.json(proxy as Record<string, unknown>) : null}
         )
         RETURNING
-          id, name, phone, status, tag,
+          id, name, phone, status, tag, wpp_token AS "wppToken",
+          webhook, proxy,
           messages_today                    AS "messagesToday",
           last_activity                     AS "lastActivity",
           TO_CHAR(created_at, 'DD/MM/YYYY') AS created
       `;
+
+      await insertLog('info', `Sessão "${session.name}" criada`, session.id);
 
       set.status = 201;
       return { data: session };
     },
     {
       body: t.Object({
-        id:    t.Optional(t.String()),
-        name:  t.String({ minLength: 1 }),
-        phone: t.Optional(t.String()),
-        tag:   t.Optional(t.String()),
+        id:      t.Optional(t.String()),
+        name:    t.String({ minLength: 1 }),
+        phone:   t.Optional(t.String()),
+        tag:     t.Optional(t.String()),
+        webhook: t.Optional(t.String()),
+        proxy:   t.Optional(t.Object({
+          url:      t.String(),
+          username: t.Optional(t.String()),
+          password: t.Optional(t.String()),
+        })),
       }),
     }
   )
@@ -90,7 +126,8 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
     async ({ params, set }) => {
       const [session] = await sql`
         SELECT
-          id, name, phone, status, tag,
+          id, name, phone, status, tag, wpp_token AS "wppToken",
+          webhook, proxy,
           messages_today                    AS "messagesToday",
           last_activity                     AS "lastActivity",
           TO_CHAR(created_at, 'DD/MM/YYYY') AS created
@@ -107,7 +144,7 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
   .put('/:id',
     async ({ params, body, set }) => {
       const fields = body as Record<string, unknown>;
-      const allowed = ['name','phone','status','tag','messages_today','last_activity'] as const;
+      const allowed = ['name','phone','status','tag','messages_today','last_activity','webhook'] as const;
 
       const updates: string[] = [];
       const values: unknown[] = [];
@@ -131,13 +168,24 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
         SET ${sql.join(setParts, sql`, `)}
         WHERE id = ${params.id}
         RETURNING
-          id, name, phone, status, tag,
+          id, name, phone, status, tag, wpp_token AS "wppToken",
+          webhook, proxy,
           messages_today                    AS "messagesToday",
           last_activity                     AS "lastActivity",
           TO_CHAR(created_at, 'DD/MM/YYYY') AS created
       `;
 
       if (!updated) { set.status = 404; return { error: 'Sessão não encontrada' }; }
+
+      const newStatus = (fields as Record<string,unknown>).status as string | undefined;
+      if (newStatus === 'connected') {
+        await insertLog('ok',   `Sessão ${params.id} conectada com sucesso`, params.id);
+      } else if (newStatus === 'offline') {
+        await insertLog('warn', `Sessão ${params.id} desconectada`, params.id);
+      } else if (newStatus === 'qr') {
+        await insertLog('info', `QR Code regenerado para ${params.id}`, params.id);
+      }
+
       return { data: updated };
     },
     {
@@ -160,6 +208,9 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
       `;
 
       if (!deleted) { set.status = 404; return { error: 'Sessão não encontrada' }; }
+
+      await insertLog('info', `Sessão ${params.id} removida`, params.id);
+
       set.status = 204;
       return null;
     }

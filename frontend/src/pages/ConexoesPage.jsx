@@ -2,6 +2,7 @@ import React from 'react';
 import Ic from '../components/icons';
 import ConnectPanel from '../components/connect';
 import NewSessionModal from '../components/modal';
+import QrCodeModal from '../components/qrmodal';
 import { sessionsService } from '../services/sessions';
 
 const PAGE_SIZE = 8;
@@ -17,18 +18,55 @@ export default function ConexoesPage({ toast }) {
   const [qrVariant, setQrVariant]   = React.useState(1);
   const [timer, setTimer]           = React.useState(45);
   const [modalOpen, setModalOpen]   = React.useState(false);
-  const [menuOpenId, setMenuOpenId] = React.useState(null);
+  const [qrSession, setQrSession]   = React.useState(null);
+  const [qrCache, setQrCache] = React.useState(() => {
+    try {
+      const raw = sessionStorage.getItem('wpp_qr_cache');
+      if (!raw) return {};
+      const stored = JSON.parse(raw);
+      const now = Date.now();
+      const valid = {};
+      for (const [id, entry] of Object.entries(stored)) {
+        if (entry?.ts && now - entry.ts < 55_000) valid[id] = entry;
+      }
+      return valid;
+    } catch { return {}; }
+  });
   const [page, setPage]             = React.useState(1);
 
   const fetchSessions = React.useCallback(() => {
     setLoading(true);
     sessionsService.list()
-      .then(res => setSessions(res.data))
+      .then(res => {
+        let list = res.data;
+        // Sessão com offline pendente: modal foi aberto e não houve conexão
+        // (refresh com modal aberto OU update que falhou anteriormente)
+        const pending = sessionStorage.getItem('wpp_offline_pending');
+        if (pending) {
+          list = list.map(s => {
+            if (s.id === pending && s.status !== 'connected') {
+              sessionsService.update(s.id, { status: 'offline' })
+                .then(() => {
+                  if (sessionStorage.getItem('wpp_offline_pending') === s.id)
+                    sessionStorage.removeItem('wpp_offline_pending');
+                })
+                .catch(() => {});
+              return { ...s, status: 'offline' };
+            }
+            return s;
+          });
+        }
+        setSessions(list);
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
 
   React.useEffect(() => { fetchSessions(); }, [fetchSessions]);
+
+  React.useEffect(() => {
+    try { sessionStorage.setItem('wpp_qr_cache', JSON.stringify(qrCache)); } catch {}
+  }, [qrCache]);
 
   // Reset página ao filtrar/buscar
   React.useEffect(() => setPage(1), [filter, search]);
@@ -40,13 +78,6 @@ export default function ConexoesPage({ toast }) {
       return t - 1;
     }), 1000);
     return () => clearInterval(id);
-  }, []);
-
-  // Fechar dropdown ao clicar fora
-  React.useEffect(() => {
-    const close = () => setMenuOpenId(null);
-    window.addEventListener('click', close);
-    return () => window.removeEventListener('click', close);
   }, []);
 
   const counts = React.useMemo(() => ({
@@ -90,7 +121,6 @@ export default function ConexoesPage({ toast }) {
 
   const handleAction = async (session, action, e) => {
     e?.stopPropagation();
-    setMenuOpenId(null);
     if (action === 'delete') {
       try {
         await sessionsService.remove(session.id);
@@ -102,8 +132,8 @@ export default function ConexoesPage({ toast }) {
         toast('Erro ao deletar sessão', 'error');
       }
     } else if (action === 'qr') {
-      setActiveId(session.id); setMode('qr');
-      setQrVariant(v => v + 1); setTimer(45);
+      sessionStorage.setItem('wpp_offline_pending', session.id);
+      setQrSession(session);
     } else if (action === 'status')     { toast(`Status: ${session.status}`);
     } else if (action === 'configurar') { toast('Abrindo configuração de produtos…');
     } else if (action === 'copy')       { toast('Token copiado');
@@ -129,6 +159,11 @@ export default function ConexoesPage({ toast }) {
     { id: 'pending',   label: 'Pendentes',     n: counts.pending   },
     { id: 'offline',   label: 'Desconectadas', n: counts.offline   },
   ];
+
+  const _cachedQr  = qrSession ? qrCache[qrSession.id] : null;
+  const _cacheOk   = _cachedQr != null && Date.now() - _cachedQr.ts < 55_000;
+  const _initQr    = _cacheOk ? _cachedQr.img : null;
+  const _initTimer = _cacheOk ? Math.max(5, Math.floor(60 - (Date.now() - _cachedQr.ts) / 1000)) : 60;
 
   return (
     <>
@@ -214,7 +249,7 @@ export default function ConexoesPage({ toast }) {
                 <th>Tag</th>
                 <th style={{ textAlign: 'right' }}>Msgs hoje</th>
                 <th>Atividade</th>
-                <th></th>
+                <th style={{ width: 200 }}></th>
               </tr></thead>
               <tbody>
                 {loading && (
@@ -277,24 +312,16 @@ export default function ConexoesPage({ toast }) {
                         {s.messagesToday > 0 ? s.messagesToday.toLocaleString('pt-BR') : '—'}
                       </td>
                       <td style={{ color: 'var(--ink-3)', fontSize: 12.5 }}>{s.lastActivity}</td>
-                      <td>
-                        <div style={{ position: 'relative', display: 'inline-block' }}>
-                          <button className="kbd-btn"
-                            onClick={e => { e.stopPropagation(); setMenuOpenId(m => m === s.id ? null : s.id); }}>
-                            <Ic.Dots/>
-                          </button>
-                          {menuOpenId === s.id && (
-                            <div className="dropdown" style={{ right: 0, left: 'auto', zIndex: 20 }}
-                              onClick={e => e.stopPropagation()}>
-                              <button className="dropdown-item" onClick={e => handleAction(s, 'qr', e)}><Ic.Qr className="icon"/>Ver QR Code</button>
-                              <button className="dropdown-item" onClick={e => handleAction(s, 'status', e)}><Ic.ChartBar className="icon"/>Verificar Status</button>
-                              <button className="dropdown-item" onClick={e => handleAction(s, 'configurar', e)}><Ic.Tag className="icon"/>Configurar</button>
-                              <button className="dropdown-item" onClick={e => handleAction(s, 'copy', e)}><Ic.Clipboard className="icon"/>Copiar Token</button>
-                              <button className="dropdown-item" onClick={e => handleAction(s, 'logs', e)}><Ic.List className="icon"/>Ver Logs</button>
-                              <div className="dropdown-sep"/>
-                              <button className="dropdown-item danger" onClick={e => handleAction(s, 'delete', e)}><Ic.Trash className="icon"/>Deletar</button>
-                            </div>
-                          )}
+                      <td onClick={e => e.stopPropagation()}>
+                        <div style={{ display: 'flex', gap: 3, justifyContent: 'flex-end' }}>
+                          <button className="kbd-btn" title="Ver QR Code"      onClick={e => handleAction(s, 'qr', e)}><Ic.Qr/></button>
+                          <button className="kbd-btn" title="Verificar Status" onClick={e => handleAction(s, 'status', e)}><Ic.ChartBar/></button>
+                          <button className="kbd-btn" title="Configurar"       onClick={e => handleAction(s, 'configurar', e)}><Ic.Tag/></button>
+                          <button className="kbd-btn" title="Copiar Token"     onClick={e => handleAction(s, 'copy', e)}><Ic.Clipboard/></button>
+                          <button className="kbd-btn" title="Ver Logs"         onClick={e => handleAction(s, 'logs', e)}><Ic.List/></button>
+                          <button className="kbd-btn" title="Deletar"
+                            style={{ color: 'var(--danger, #e55)' }}
+                            onClick={e => handleAction(s, 'delete', e)}><Ic.Trash/></button>
                         </div>
                       </td>
                     </tr>
@@ -345,6 +372,32 @@ export default function ConexoesPage({ toast }) {
           </div>
         )}
       </div>
+
+      {/* Modal QR Code */}
+      {qrSession && (
+        <QrCodeModal
+          session={qrSession}
+          initialQr={_initQr}
+          initialTimer={_initTimer}
+          onClose={() => setQrSession(null)}
+          onQr={(id, img) => setQrCache(c => ({ ...c, [id]: { img, ts: Date.now() } }))}
+          onConnected={(id) => {
+            setSessions(list => list.map(s => s.id === id ? { ...s, status: 'connected' } : s));
+            sessionsService.update(id, { status: 'connected' }).catch(() => {});
+            setQrCache(c => { const n = { ...c }; delete n[id]; return n; });
+            sessionStorage.removeItem('wpp_offline_pending');
+          }}
+          onAbort={(id) => {
+            setSessions(list => list.map(s => s.id === id ? { ...s, status: 'offline' } : s));
+            sessionsService.update(id, { status: 'offline' })
+              .then(() => {
+                if (sessionStorage.getItem('wpp_offline_pending') === id)
+                  sessionStorage.removeItem('wpp_offline_pending');
+              })
+              .catch(() => {});
+          }}
+        />
+      )}
 
       {/* Modal nova sessão */}
       {modalOpen && (

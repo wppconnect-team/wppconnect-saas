@@ -84,12 +84,27 @@ const __TWEAKS_STYLE = `
   .twk-swatch::-moz-color-swatch{border:0;border-radius:5.5px}
 `;
 
+const STORAGE_KEY = 'wpp_tweaks';
+
 export function useTweaks(defaults) {
-  const [values, setValues] = React.useState(defaults);
+  const [values, setValues] = React.useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      return saved ? { ...defaults, ...JSON.parse(saved) } : defaults;
+    } catch {
+      return defaults;
+    }
+  });
+
   const setTweak = React.useCallback((key, val) => {
-    setValues((prev) => ({ ...prev, [key]: val }));
+    setValues((prev) => {
+      const next = { ...prev, [key]: val };
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* quota */ }
+      return next;
+    });
     window.parent.postMessage({ type: '__edit_mode_set_keys', edits: { [key]: val } }, '*');
   }, []);
+
   return [values, setTweak];
 }
 

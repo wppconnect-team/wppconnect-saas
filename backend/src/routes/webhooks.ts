@@ -1,6 +1,7 @@
 import { Elysia, t } from 'elysia';
 import { authPlugin } from '../plugins/auth';
 import { sql } from '../db';
+import { insertLog } from '../lib/log';
 
 export const webhookRoutes = new Elysia({ prefix: '/api/webhooks' })
   .use(authPlugin)
@@ -59,6 +60,8 @@ export const webhookRoutes = new Elysia({ prefix: '/api/webhooks' })
           delivery_rate AS "deliveryRate"
       `;
 
+      await insertLog('info', `Webhook criado: ${url}`, 'webhook');
+
       set.status = 201;
       return { data: webhook };
     },
@@ -108,6 +111,9 @@ export const webhookRoutes = new Elysia({ prefix: '/api/webhooks' })
         DELETE FROM webhooks WHERE id = ${Number(params.id)} RETURNING id
       `;
       if (!deleted) { set.status = 404; return { error: 'Webhook não encontrado' }; }
+
+      await insertLog('info', `Webhook #${params.id} removido`, 'webhook');
+
       set.status = 204;
       return null;
     }

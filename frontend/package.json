@@ -9,10 +9,14 @@
   },
   "dependencies": {
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^6.0.2",
     "vite": "^8.0.16"
+  },
+  "overrides": {
+    "picomatch": "2.3.1"
   }
 }

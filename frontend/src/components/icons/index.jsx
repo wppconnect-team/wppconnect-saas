@@ -141,4 +141,6 @@ Ic.ChartBar = svg(<>
   <line x1="6" y1="20" x2="6" y2="14"/>
 </>);
 
+Ic.ChevronRight = svg(<polyline points="9 18 15 12 9 6"/>);
+
 export default Ic;

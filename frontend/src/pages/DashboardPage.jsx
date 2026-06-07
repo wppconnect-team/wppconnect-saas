@@ -66,11 +66,23 @@ const LOG_TYPE = { ok: 'enviado', info: 'novo', warn: 'webhook', error: 'erro' }
 export default function DashboardPage({ toast }) {
   const [data, setData] = React.useState(null);
 
-  React.useEffect(() => {
-    dashboardService.get()
-      .then(setData)
-      .catch(console.error);
+  const fetchData = React.useCallback(() => {
+    dashboardService.get().then(setData).catch(console.error);
   }, []);
+
+  // Carga inicial + polling a cada 30s
+  React.useEffect(() => {
+    fetchData();
+    const interval = setInterval(fetchData, 30_000);
+    return () => clearInterval(interval);
+  }, [fetchData]);
+
+  // Recarrega ao voltar para a aba
+  React.useEffect(() => {
+    const onFocus = () => fetchData();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [fetchData]);
 
   const sessionStats  = data?.sessions  ?? { messagesToday: 0, connected: 0, total: 0 };
   const webhookStats  = data?.webhooks  ?? { avgDelivery: 0 };
@@ -122,6 +134,9 @@ export default function DashboardPage({ toast }) {
           <select className="btn secondary" style={{ appearance: 'auto' }}>
             <option>Últimas 24h</option><option>7 dias</option><option>30 dias</option>
           </select>
+          <button className="btn secondary" onClick={fetchData} title="Atualizar dados">
+            <Ic.Refresh/>
+          </button>
           <button className="btn primary"><Ic.Download/> Relatório</button>
         </div>
       </div>

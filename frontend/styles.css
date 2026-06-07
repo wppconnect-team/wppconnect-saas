@@ -895,6 +895,8 @@ button { font-family: inherit; cursor: pointer; border: 0; background: none; col
   letter-spacing: -0.02em;
 }
 
+@keyframes wpp-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
 /* ------------ Modal ------------ */
 .modal-backdrop {
   position: fixed;

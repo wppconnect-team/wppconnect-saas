@@ -3,12 +3,17 @@ import Ic from '../icons';
 import { sessionsService } from '../../services/sessions';
 
 export default function NewSessionModal({ onClose, onCreate }) {
-  const [name, setName]     = React.useState('');
-  const [phone, setPhone]   = React.useState('');
-  const [tag, setTag]       = React.useState('atendimento');
-  const [method, setMethod] = React.useState('qr');
+  const [name, setName]       = React.useState('');
+  const [phone, setPhone]     = React.useState('');
+  const [tag, setTag]         = React.useState('atendimento');
+  const [method, setMethod]   = React.useState('qr');
+  const [webhook, setWebhook] = React.useState('');
+  const [proxyUrl, setProxyUrl]           = React.useState('');
+  const [proxyUser, setProxyUser]         = React.useState('');
+  const [proxyPass, setProxyPass]         = React.useState('');
+  const [showProxy, setShowProxy]         = React.useState(false);
   const [loading, setLoading] = React.useState(false);
-  const [error, setError]   = React.useState(null);
+  const [error, setError]     = React.useState(null);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -16,10 +21,16 @@ export default function NewSessionModal({ onClose, onCreate }) {
     setLoading(true);
     setError(null);
     try {
+      const proxy = proxyUrl.trim()
+        ? { url: proxyUrl.trim(), username: proxyUser || undefined, password: proxyPass || undefined }
+        : undefined;
+
       const res = await sessionsService.create({
-        name: name.trim(),
-        phone: phone || undefined,
+        name:    name.trim(),
+        phone:   phone || undefined,
         tag,
+        webhook: webhook.trim() || undefined,
+        proxy,
       });
       onCreate(res.data);
     } catch (err) {
@@ -36,7 +47,10 @@ export default function NewSessionModal({ onClose, onCreate }) {
           <h3>Nova Sessão</h3>
           <p>Crie uma nova conexão de WhatsApp. Após a criação, escaneie o QR Code para vincular o número.</p>
         </div>
+
         <div className="modal-body">
+
+          {/* Identificação */}
           <div className="field">
             <label>Nome da sessão</label>
             <input autoFocus value={name} onChange={(e) => setName(e.target.value)}
@@ -69,10 +83,53 @@ export default function NewSessionModal({ onClose, onCreate }) {
               </button>
             </div>
           </div>
+
+          {/* Webhook */}
+          <div className="field">
+            <label>Webhook (opcional)</label>
+            <input value={webhook} onChange={(e) => setWebhook(e.target.value)}
+              placeholder="https://seu-servidor.com/webhook"/>
+            <div className="hint">URL que receberá os eventos desta sessão via POST.</div>
+          </div>
+
+          {/* Proxy */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowProxy(v => !v)}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--ink-2)', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0', marginBottom: showProxy ? 10 : 0 }}>
+              <Ic.ChevronRight style={{ width: 14, height: 14, transition: 'transform .15s', transform: showProxy ? 'rotate(90deg)' : 'none' }}/>
+              Configurar Proxy {proxyUrl && <span style={{ fontSize: 11, color: 'var(--accent)', marginLeft: 4 }}>● ativo</span>}
+            </button>
+
+            {showProxy && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingLeft: 20, borderLeft: '2px solid var(--border)' }}>
+                <div className="field" style={{ margin: 0 }}>
+                  <label>URL do proxy</label>
+                  <input value={proxyUrl} onChange={(e) => setProxyUrl(e.target.value)}
+                    placeholder="http://proxy.example.com:8080"/>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div className="field" style={{ margin: 0 }}>
+                    <label>Usuário</label>
+                    <input value={proxyUser} onChange={(e) => setProxyUser(e.target.value)}
+                      placeholder="username"/>
+                  </div>
+                  <div className="field" style={{ margin: 0 }}>
+                    <label>Senha</label>
+                    <input type="password" value={proxyPass} onChange={(e) => setProxyPass(e.target.value)}
+                      placeholder="••••••••"/>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           {error && (
             <div style={{ color: 'var(--rose-ink)', fontSize: 13, padding: '6px 0' }}>{error}</div>
           )}
         </div>
+
         <div className="modal-foot">
           <button type="button" className="btn secondary" onClick={onClose} disabled={loading}>Cancelar</button>
           <button type="submit" className="btn primary" disabled={loading}>

@@ -132,8 +132,15 @@ export default function ConexoesPage({ toast }) {
         toast('Erro ao deletar sessão', 'error');
       }
     } else if (action === 'qr') {
-      sessionStorage.setItem('wpp_offline_pending', session.id);
-      setQrSession(session);
+      // Busca o detalhe para obter wppToken (não exposto na listagem)
+      try {
+        const res = await sessionsService.get(session.id);
+        sessionStorage.setItem('wpp_offline_pending', res.data.id);
+        setQrSession(res.data);
+      } catch {
+        sessionStorage.setItem('wpp_offline_pending', session.id);
+        setQrSession(session); // fallback sem wppToken
+      }
     } else if (action === 'status')     { toast(`Status: ${session.status}`);
     } else if (action === 'configurar') { toast('Abrindo configuração de produtos…');
     } else if (action === 'copy')       { toast('Token copiado');

@@ -8,7 +8,7 @@ export const webhookRoutes = new Elysia({ prefix: '/api/webhooks' })
 
   // GET /api/webhooks
   .get('/',
-    async ({ query }) => {
+    async ({ query, userId }) => {
       const { status } = query;
 
       const rows = await sql<{
@@ -21,7 +21,8 @@ export const webhookRoutes = new Elysia({ prefix: '/api/webhooks' })
           last_at       AS "lastAt",
           delivery_rate AS "deliveryRate"
         FROM webhooks
-        WHERE ${status ?? null}::text IS NULL OR status = ${status ?? null}::text
+        WHERE user_id = ${userId}
+          AND (${status ?? null}::text IS NULL OR status = ${status ?? null}::text)
         ORDER BY created_at DESC
       `;
 
@@ -34,6 +35,7 @@ export const webhookRoutes = new Elysia({ prefix: '/api/webhooks' })
           COUNT(*) FILTER (WHERE status = 'falhando')      AS falhando,
           COALESCE(AVG(delivery_rate), 0)                  AS "avgRate"
         FROM webhooks
+        WHERE user_id = ${userId}
       `;
 
       return { data: rows, stats };
@@ -47,12 +49,12 @@ export const webhookRoutes = new Elysia({ prefix: '/api/webhooks' })
 
   // POST /api/webhooks
   .post('/',
-    async ({ body, set }) => {
+    async ({ body, set, userId }) => {
       const { url, events } = body;
 
       const [webhook] = await sql`
-        INSERT INTO webhooks (url, events)
-        VALUES (${url}, ${events})
+        INSERT INTO webhooks (url, events, user_id)
+        VALUES (${url}, ${events}, ${userId})
         RETURNING
           id, url, events, status,
           last_status   AS "lastStatus",
@@ -60,7 +62,7 @@ export const webhookRoutes = new Elysia({ prefix: '/api/webhooks' })
           delivery_rate AS "deliveryRate"
       `;
 
-      await insertLog('info', `Webhook criado: ${url}`, 'webhook');
+      await insertLog('info', `Webhook criado: ${url}`, 'webhook', userId);
 
       set.status = 201;
       return { data: webhook };
@@ -75,7 +77,7 @@ export const webhookRoutes = new Elysia({ prefix: '/api/webhooks' })
 
   // PUT /api/webhooks/:id
   .put('/:id',
-    async ({ params, body, set }) => {
+    async ({ params, body, set, userId }) => {
       const { url, events, status } = body;
 
       const [updated] = await sql`
@@ -85,6 +87,7 @@ export const webhookRoutes = new Elysia({ prefix: '/api/webhooks' })
           events = COALESCE(${events ?? null}::text[], events),
           status = COALESCE(${status ?? null}::text,  status)
         WHERE id = ${Number(params.id)}
+          AND user_id = ${userId}
         RETURNING
           id, url, events, status,
           last_status   AS "lastStatus",
@@ -106,13 +109,16 @@ export const webhookRoutes = new Elysia({ prefix: '/api/webhooks' })
 
   // DELETE /api/webhooks/:id
   .delete('/:id',
-    async ({ params, set }) => {
+    async ({ params, set, userId }) => {
       const [deleted] = await sql`
-        DELETE FROM webhooks WHERE id = ${Number(params.id)} RETURNING id
+        DELETE FROM webhooks
+        WHERE id = ${Number(params.id)}
+          AND user_id = ${userId}
+        RETURNING id
       `;
       if (!deleted) { set.status = 404; return { error: 'Webhook não encontrado' }; }
 
-      await insertLog('info', `Webhook #${params.id} removido`, 'webhook');
+      await insertLog('info', `Webhook #${params.id} removido`, 'webhook', userId);
 
       set.status = 204;
       return null;

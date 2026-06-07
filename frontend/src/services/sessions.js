@@ -8,6 +8,7 @@ function qs(params) {
 
 export const sessionsService = {
   list:   (params)   => api.get(`/api/sessions${qs(params)}`),
+  get:    (id)       => api.get(`/api/sessions/${id}`),
   create: (data)     => api.post('/api/sessions', data),
   update: (id, data) => api.put(`/api/sessions/${id}`, data),
   remove: (id)       => api.delete(`/api/sessions/${id}`),

@@ -9,27 +9,26 @@ const WPP_SECRET_KEY = process.env.WPP_SECRET_KEY ?? 'THISISMYSECURETOKEN';
 export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
   .use(authPlugin)
 
-  // GET /api/sessions  — lista com filtro e contagens
+  // GET /api/sessions  — lista (sem wppToken; buscar GET /:id para obter o token)
   .get('/',
-    async ({ query }) => {
+    async ({ query, userId }) => {
       const { status, search } = query;
 
       const rows = await sql<{
         id: string; name: string; phone: string; status: string;
         tag: string; messagesToday: number; lastActivity: string; created: string;
-        wppToken: string; webhook: string; proxy: unknown;
+        webhook: string; proxy: unknown;
       }[]>`
         SELECT
           id, name, phone, status, tag,
           messages_today                         AS "messagesToday",
           last_activity                          AS "lastActivity",
           TO_CHAR(created_at, 'DD/MM/YYYY')      AS created,
-          wpp_token                              AS "wppToken",
           webhook,
           proxy
         FROM sessions
-        WHERE
-          (${status ?? null}::text IS NULL OR status = ${status ?? null}::text)
+        WHERE user_id = ${userId}
+          AND (${status ?? null}::text IS NULL OR status = ${status ?? null}::text)
           AND (
             ${search ?? null}::text IS NULL
             OR name  ILIKE ${'%' + (search ?? '') + '%'}
@@ -47,6 +46,7 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
           COUNT(*) FILTER (WHERE status IN ('pending','qr'))                        AS pending,
           COUNT(*) FILTER (WHERE status = 'offline')                                AS offline
         FROM sessions
+        WHERE user_id = ${userId}
       `;
 
       return { data: rows, counts };
@@ -61,7 +61,7 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
 
   // POST /api/sessions — criar sessão
   .post('/',
-    async ({ body, set }) => {
+    async ({ body, set, userId }) => {
       const { id, name, phone, tag, webhook, proxy } = body;
       const sessionId = id ?? 'wa_' + Math.random().toString(36).slice(2, 6);
 
@@ -81,7 +81,7 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
       }
 
       const [session] = await sql`
-        INSERT INTO sessions (id, name, phone, tag, status, wpp_token, webhook, proxy)
+        INSERT INTO sessions (id, name, phone, tag, status, wpp_token, webhook, proxy, user_id)
         VALUES (
           ${sessionId},
           ${name},
@@ -90,7 +90,8 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
           'qr',
           ${wppToken},
           ${webhook ?? ''},
-          ${proxy ? sql.json(proxy as Record<string, unknown>) : null}
+          ${proxy ? sql.json(proxy as Record<string, unknown>) : null},
+          ${userId}
         )
         RETURNING
           id, name, phone, status, tag, wpp_token AS "wppToken",
@@ -100,7 +101,7 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
           TO_CHAR(created_at, 'DD/MM/YYYY') AS created
       `;
 
-      await insertLog('info', `Sessão "${session.name}" criada`, session.id);
+      await insertLog('info', `Sessão "${session.name}" criada`, session.id, userId);
 
       set.status = 201;
       return { data: session };
@@ -121,9 +122,9 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
     }
   )
 
-  // GET /api/sessions/:id — detalhes
+  // GET /api/sessions/:id — detalhes com wppToken
   .get('/:id',
-    async ({ params, set }) => {
+    async ({ params, set, userId }) => {
       const [session] = await sql`
         SELECT
           id, name, phone, status, tag, wpp_token AS "wppToken",
@@ -133,6 +134,7 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
           TO_CHAR(created_at, 'DD/MM/YYYY') AS created
         FROM sessions
         WHERE id = ${params.id}
+          AND user_id = ${userId}
       `;
 
       if (!session) { set.status = 404; return { error: 'Sessão não encontrada' }; }
@@ -142,7 +144,7 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
 
   // PUT /api/sessions/:id — atualizar
   .put('/:id',
-    async ({ params, body, set }) => {
+    async ({ params, body, set, userId }) => {
       const fields = body as Record<string, unknown>;
       const allowed = ['name','phone','status','tag','messages_today','last_activity','webhook'] as const;
 
@@ -161,14 +163,14 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
         return { error: 'Nenhum campo para atualizar' };
       }
 
-      // Monta SET dinâmico sem ORM
       const setParts = updates.map((col, i) => sql`${sql(col)} = ${values[i]}`);
       const [updated] = await sql`
         UPDATE sessions
         SET ${sql.join(setParts, sql`, `)}
         WHERE id = ${params.id}
+          AND user_id = ${userId}
         RETURNING
-          id, name, phone, status, tag, wpp_token AS "wppToken",
+          id, name, phone, status, tag,
           webhook, proxy,
           messages_today                    AS "messagesToday",
           last_activity                     AS "lastActivity",
@@ -177,13 +179,13 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
 
       if (!updated) { set.status = 404; return { error: 'Sessão não encontrada' }; }
 
-      const newStatus = (fields as Record<string,unknown>).status as string | undefined;
+      const newStatus = (fields as Record<string, unknown>).status as string | undefined;
       if (newStatus === 'connected') {
-        await insertLog('ok',   `Sessão ${params.id} conectada com sucesso`, params.id);
+        await insertLog('ok',   `Sessão ${params.id} conectada com sucesso`, params.id, userId);
       } else if (newStatus === 'offline') {
-        await insertLog('warn', `Sessão ${params.id} desconectada`, params.id);
+        await insertLog('warn', `Sessão ${params.id} desconectada`, params.id, userId);
       } else if (newStatus === 'qr') {
-        await insertLog('info', `QR Code regenerado para ${params.id}`, params.id);
+        await insertLog('info', `QR Code regenerado para ${params.id}`, params.id, userId);
       }
 
       return { data: updated };
@@ -202,14 +204,17 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
 
   // DELETE /api/sessions/:id
   .delete('/:id',
-    async ({ params, set }) => {
+    async ({ params, set, userId }) => {
       const [deleted] = await sql`
-        DELETE FROM sessions WHERE id = ${params.id} RETURNING id
+        DELETE FROM sessions
+        WHERE id = ${params.id}
+          AND user_id = ${userId}
+        RETURNING id
       `;
 
       if (!deleted) { set.status = 404; return { error: 'Sessão não encontrada' }; }
 
-      await insertLog('info', `Sessão ${params.id} removida`, params.id);
+      await insertLog('info', `Sessão ${params.id} removida`, params.id, userId);
 
       set.status = 204;
       return null;

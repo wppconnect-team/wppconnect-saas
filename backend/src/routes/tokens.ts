@@ -16,7 +16,7 @@ export const tokenRoutes = new Elysia({ prefix: '/api/tokens' })
 
   // GET /api/tokens
   .get('/',
-    async () => {
+    async ({ userId }) => {
       const rows = await sql<{
         id: number; name: string; tokenPrefix: string; scopes: string[];
         lastUsedAt: Date | null; createdAt: Date;
@@ -28,6 +28,7 @@ export const tokenRoutes = new Elysia({ prefix: '/api/tokens' })
           last_used_at  AS "lastUsedAt",
           created_at    AS "createdAt"
         FROM api_tokens
+        WHERE user_id = ${userId}
         ORDER BY created_at DESC
       `;
 
@@ -37,14 +38,14 @@ export const tokenRoutes = new Elysia({ prefix: '/api/tokens' })
 
   // POST /api/tokens
   .post('/',
-    async ({ body, set }) => {
+    async ({ body, set, userId }) => {
       const { name, scopes } = body;
       const env = process.env.NODE_ENV ?? 'development';
       const { plain, hash, prefix } = generateToken(env);
 
       const [token] = await sql`
-        INSERT INTO api_tokens (name, token_hash, token_prefix, scopes)
-        VALUES (${name}, ${hash}, ${prefix}, ${scopes ?? []})
+        INSERT INTO api_tokens (name, token_hash, token_prefix, scopes, user_id)
+        VALUES (${name}, ${hash}, ${prefix}, ${scopes ?? []}, ${userId})
         RETURNING
           id, name,
           token_prefix AS "tokenPrefix",
@@ -66,9 +67,12 @@ export const tokenRoutes = new Elysia({ prefix: '/api/tokens' })
 
   // DELETE /api/tokens/:id  (revogar)
   .delete('/:id',
-    async ({ params, set }) => {
+    async ({ params, set, userId }) => {
       const [deleted] = await sql`
-        DELETE FROM api_tokens WHERE id = ${Number(params.id)} RETURNING id
+        DELETE FROM api_tokens
+        WHERE id = ${Number(params.id)}
+          AND user_id = ${userId}
+        RETURNING id
       `;
       if (!deleted) { set.status = 404; return { error: 'Token não encontrado' }; }
       set.status = 204;

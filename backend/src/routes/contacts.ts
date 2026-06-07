@@ -7,7 +7,7 @@ export const contactRoutes = new Elysia({ prefix: '/api/contacts' })
 
   // GET /api/contacts
   .get('/',
-    async ({ query }) => {
+    async ({ query, userId }) => {
       const { search, status } = query;
 
       const rows = await sql<{
@@ -19,8 +19,8 @@ export const contactRoutes = new Elysia({ prefix: '/api/contacts' })
           messages_count    AS "messagesCount",
           last_interaction  AS "lastInteraction"
         FROM contacts
-        WHERE
-          (${status ?? null}::text IS NULL OR status = ${status ?? null}::text)
+        WHERE user_id = ${userId}
+          AND (${status ?? null}::text IS NULL OR status = ${status ?? null}::text)
           AND (
             ${search ?? null}::text IS NULL
             OR name  ILIKE ${'%' + (search ?? '') + '%'}
@@ -38,6 +38,7 @@ export const contactRoutes = new Elysia({ prefix: '/api/contacts' })
           COUNT(*) FILTER (WHERE status = 'inativo')       AS inativos,
           COALESCE(SUM(messages_count), 0)                 AS "totalMessages"
         FROM contacts
+        WHERE user_id = ${userId}
       `;
 
       return { data: rows, stats };
@@ -52,12 +53,12 @@ export const contactRoutes = new Elysia({ prefix: '/api/contacts' })
 
   // POST /api/contacts
   .post('/',
-    async ({ body, set }) => {
+    async ({ body, set, userId }) => {
       const { name, phone, tags, status } = body;
 
       const [contact] = await sql`
-        INSERT INTO contacts (name, phone, tags, status)
-        VALUES (${name}, ${phone}, ${tags ?? []}, ${status ?? 'ativo'})
+        INSERT INTO contacts (name, phone, tags, status, user_id)
+        VALUES (${name}, ${phone}, ${tags ?? []}, ${status ?? 'ativo'}, ${userId})
         RETURNING
           id, name, phone, tags, status,
           messages_count   AS "messagesCount",
@@ -72,16 +73,19 @@ export const contactRoutes = new Elysia({ prefix: '/api/contacts' })
         name:   t.String({ minLength: 1 }),
         phone:  t.String({ minLength: 1 }),
         tags:   t.Optional(t.Array(t.String())),
-        status: t.Optional(t.String()),
+        status: t.Optional(t.Union([t.Literal('ativo'), t.Literal('inativo')])),
       }),
     }
   )
 
   // DELETE /api/contacts/:id
   .delete('/:id',
-    async ({ params, set }) => {
+    async ({ params, set, userId }) => {
       const [deleted] = await sql`
-        DELETE FROM contacts WHERE id = ${Number(params.id)} RETURNING id
+        DELETE FROM contacts
+        WHERE id = ${Number(params.id)}
+          AND user_id = ${userId}
+        RETURNING id
       `;
       if (!deleted) { set.status = 404; return { error: 'Contato não encontrado' }; }
       set.status = 204;

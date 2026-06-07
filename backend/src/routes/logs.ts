@@ -7,7 +7,7 @@ export const logRoutes = new Elysia({ prefix: '/api/logs' })
 
   // GET /api/logs
   .get('/',
-    async ({ query }) => {
+    async ({ query, userId }) => {
       const { level, search, limit = '100' } = query;
       const take = Math.min(Number(limit), 500);
 
@@ -18,8 +18,8 @@ export const logRoutes = new Elysia({ prefix: '/api/logs' })
           id, level, message, source,
           created_at AS "createdAt"
         FROM logs
-        WHERE
-          (${level ?? null}::text IS NULL OR level = ${level ?? null}::text)
+        WHERE user_id = ${userId}
+          AND (${level ?? null}::text IS NULL OR level = ${level ?? null}::text)
           AND (
             ${search ?? null}::text IS NULL
             OR message ILIKE ${'%' + (search ?? '') + '%'}
@@ -39,6 +39,7 @@ export const logRoutes = new Elysia({ prefix: '/api/logs' })
           COUNT(*) FILTER (WHERE level = 'warn')           AS warn,
           COUNT(*) FILTER (WHERE level = 'error')          AS error
         FROM logs
+        WHERE user_id = ${userId}
       `;
 
       return { data: rows, counts };
@@ -54,12 +55,12 @@ export const logRoutes = new Elysia({ prefix: '/api/logs' })
 
   // POST /api/logs — inserir entrada de log
   .post('/',
-    async ({ body, set }) => {
+    async ({ body, set, userId }) => {
       const { level, message, source } = body;
 
       const [log] = await sql`
-        INSERT INTO logs (level, message, source)
-        VALUES (${level}, ${message}, ${source ?? 'system'})
+        INSERT INTO logs (level, message, source, user_id)
+        VALUES (${level}, ${message}, ${source ?? 'system'}, ${userId})
         RETURNING id, level, message, source, created_at AS "createdAt"
       `;
 

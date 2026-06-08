@@ -8,17 +8,19 @@ export const authPlugin = new Elysia({ name: 'auth-plugin' })
   .use(jwt({ name: 'jwt', secret: JWT_SECRET }))
   .derive({ as: 'scoped' }, async ({ jwt, cookie: { auth } }) => {
     const token = auth?.value as string | undefined;
-    if (!token) return { userId: '', userEmail: '' };
+    if (!token) return { userId: '', userEmail: '', workspaceId: '' };
 
     const payload = await jwt.verify(token);
     if (!payload) {
       auth.remove();
-      return { userId: '', userEmail: '' };
+      return { userId: '', userEmail: '', workspaceId: '' };
     }
 
+    const p = payload as Record<string, unknown>;
     return {
-      userId:    String(payload.sub   ?? ''),
-      userEmail: String((payload as Record<string, unknown>).email ?? ''),
+      userId:      String(p.sub   ?? ''),
+      userEmail:   String(p.email ?? ''),
+      workspaceId: String(p.wid   ?? ''),
     };
   })
   .onBeforeHandle({ as: 'scoped' }, ({ userId, set }) => {

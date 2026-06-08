@@ -7,11 +7,12 @@ export async function insertLog(
   message: string,
   source = 'system',
   userId: string | null = null,
+  workspaceId: string | null = null,
 ) {
   try {
     await sql`
-      INSERT INTO logs (level, message, source, user_id)
-      VALUES (${level}, ${message}, ${source}, ${userId})
+      INSERT INTO logs (level, message, source, user_id, workspace_id)
+      VALUES (${level}, ${message}, ${source}, ${userId}, ${workspaceId})
     `;
   } catch (err) {
     console.error('[insertLog] falhou:', err);

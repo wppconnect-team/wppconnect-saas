@@ -7,7 +7,7 @@ export const contactRoutes = new Elysia({ prefix: '/api/contacts' })
 
   // GET /api/contacts
   .get('/',
-    async ({ query, userId }) => {
+    async ({ query, workspaceId }) => {
       const { search, status } = query;
 
       const rows = await sql<{
@@ -19,7 +19,7 @@ export const contactRoutes = new Elysia({ prefix: '/api/contacts' })
           messages_count    AS "messagesCount",
           last_interaction  AS "lastInteraction"
         FROM contacts
-        WHERE user_id = ${userId}
+        WHERE workspace_id = ${workspaceId}
           AND (${status ?? null}::text IS NULL OR status = ${status ?? null}::text)
           AND (
             ${search ?? null}::text IS NULL
@@ -38,7 +38,7 @@ export const contactRoutes = new Elysia({ prefix: '/api/contacts' })
           COUNT(*) FILTER (WHERE status = 'inativo')       AS inativos,
           COALESCE(SUM(messages_count), 0)                 AS "totalMessages"
         FROM contacts
-        WHERE user_id = ${userId}
+        WHERE workspace_id = ${workspaceId}
       `;
 
       return { data: rows, stats };
@@ -53,12 +53,12 @@ export const contactRoutes = new Elysia({ prefix: '/api/contacts' })
 
   // POST /api/contacts
   .post('/',
-    async ({ body, set, userId }) => {
+    async ({ body, set, userId, workspaceId }) => {
       const { name, phone, tags, status } = body;
 
       const [contact] = await sql`
-        INSERT INTO contacts (name, phone, tags, status, user_id)
-        VALUES (${name}, ${phone}, ${tags ?? []}, ${status ?? 'ativo'}, ${userId})
+        INSERT INTO contacts (name, phone, tags, status, user_id, workspace_id)
+        VALUES (${name}, ${phone}, ${tags ?? []}, ${status ?? 'ativo'}, ${userId}, ${workspaceId})
         RETURNING
           id, name, phone, tags, status,
           messages_count   AS "messagesCount",
@@ -80,7 +80,7 @@ export const contactRoutes = new Elysia({ prefix: '/api/contacts' })
 
   // PUT /api/contacts/:id
   .put('/:id',
-    async ({ params, body, set, userId }) => {
+    async ({ params, body, set, workspaceId }) => {
       const { name, phone, tags, status } = body;
 
       const [updated] = await sql`
@@ -91,7 +91,7 @@ export const contactRoutes = new Elysia({ prefix: '/api/contacts' })
           tags   = COALESCE(${tags   ?? null}::text[],  tags),
           status = COALESCE(${status ?? null}::text,    status)
         WHERE id = ${Number(params.id)}
-          AND user_id = ${userId}
+          AND workspace_id = ${workspaceId}
         RETURNING
           id, name, phone, tags, status,
           messages_count   AS "messagesCount",
@@ -113,11 +113,11 @@ export const contactRoutes = new Elysia({ prefix: '/api/contacts' })
 
   // DELETE /api/contacts/:id
   .delete('/:id',
-    async ({ params, set, userId }) => {
+    async ({ params, set, workspaceId }) => {
       const [deleted] = await sql`
         DELETE FROM contacts
         WHERE id = ${Number(params.id)}
-          AND user_id = ${userId}
+          AND workspace_id = ${workspaceId}
         RETURNING id
       `;
       if (!deleted) { set.status = 404; return { error: 'Contato não encontrado' }; }

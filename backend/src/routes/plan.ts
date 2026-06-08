@@ -23,44 +23,48 @@ function fmtPrice(slug: PlanSlug, cycle: string): string {
   return `R$ ${price.toLocaleString('pt-BR')}/mês`;
 }
 
-async function usageFor(userId: string) {
+async function usageFor(workspaceId: string) {
   const [sessions] = await sql<{ used: string }[]>`
-    SELECT COUNT(*) AS used FROM sessions WHERE user_id = ${userId}
+    SELECT COUNT(*) AS used FROM sessions WHERE workspace_id = ${workspaceId}
   `;
   const [messages] = await sql<{ used: string }[]>`
-    SELECT COALESCE(SUM(messages_today), 0) AS used FROM sessions WHERE user_id = ${userId}
+    SELECT COALESCE(SUM(messages_today), 0) AS used FROM sessions WHERE workspace_id = ${workspaceId}
   `;
   const [members] = await sql<{ used: string }[]>`
-    SELECT COUNT(*) AS used FROM users
+    SELECT COUNT(*) AS used FROM users WHERE workspace_id = ${workspaceId}
   `;
-  return { sessions: parseInt(sessions.used), messages: parseInt(messages.used), members: parseInt(members.used) };
+  return {
+    sessions: parseInt(sessions.used),
+    messages: parseInt(messages.used),
+    members:  parseInt(members.used),
+  };
 }
 
 export const planRoutes = new Elysia({ prefix: '/api/plan' })
   .use(authPlugin)
 
   // GET /api/plan
-  .get('/', async ({ userId }) => {
-    const [user] = await sql<{
+  .get('/', async ({ workspaceId }) => {
+    const [ws] = await sql<{
       planSlug: string; billingCycle: string; planRenewsAt: string;
     }[]>`
       SELECT plan_slug       AS "planSlug",
              billing_cycle   AS "billingCycle",
              plan_renews_at::text AS "planRenewsAt"
-      FROM users WHERE id = ${userId}
+      FROM workspaces WHERE id = ${workspaceId}
     `;
 
-    const slug  = (user?.planSlug  ?? 'pro')     as PlanSlug;
-    const cycle =  user?.billingCycle ?? 'monthly';
+    const slug  = (ws?.planSlug  ?? 'pro')     as PlanSlug;
+    const cycle =  ws?.billingCycle ?? 'monthly';
     const def   = PLAN_DEFS[slug] ?? PLAN_DEFS.pro;
-    const usage = await usageFor(userId);
+    const usage = await usageFor(workspaceId);
 
     return {
       plan:     def.label,
       slug,
       cycle,
       price:    fmtPrice(slug, cycle),
-      renewal:  user?.planRenewsAt ?? new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10),
+      renewal:  ws?.planRenewsAt ?? new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10),
       sessions: { used: usage.sessions, limit: def.sessions },
       messages: { used: usage.messages, limit: def.messages },
       members:  { used: usage.members,  limit: def.members  },
@@ -69,7 +73,7 @@ export const planRoutes = new Elysia({ prefix: '/api/plan' })
 
   // POST /api/plan/upgrade
   .post('/upgrade',
-    async ({ body, userId, set }) => {
+    async ({ body, workspaceId, set }) => {
       const { plan, cycle } = body;
       const slug = plan as PlanSlug;
 
@@ -86,16 +90,16 @@ export const planRoutes = new Elysia({ prefix: '/api/plan' })
       renewsAt.setDate(renewsAt.getDate() + (cycle === 'annual' ? 365 : 30));
 
       await sql`
-        UPDATE users
+        UPDATE workspaces
         SET plan_slug      = ${slug},
             billing_cycle  = ${cycle},
             plan_renews_at = ${renewsAt.toISOString().slice(0, 10)},
             plan_cancelled = FALSE
-        WHERE id = ${userId}
+        WHERE id = ${workspaceId}
       `;
 
       const def   = PLAN_DEFS[slug];
-      const usage = await usageFor(userId);
+      const usage = await usageFor(workspaceId);
 
       return {
         plan:     def.label,
@@ -117,14 +121,14 @@ export const planRoutes = new Elysia({ prefix: '/api/plan' })
   )
 
   // POST /api/plan/cancel
-  .post('/cancel', async ({ userId }) => {
-    const [user] = await sql<{ planRenewsAt: string }[]>`
-      SELECT plan_renews_at::text AS "planRenewsAt" FROM users WHERE id = ${userId}
+  .post('/cancel', async ({ workspaceId }) => {
+    const [ws] = await sql<{ planRenewsAt: string }[]>`
+      SELECT plan_renews_at::text AS "planRenewsAt" FROM workspaces WHERE id = ${workspaceId}
     `;
 
     await sql`
-      UPDATE users SET plan_cancelled = TRUE WHERE id = ${userId}
+      UPDATE workspaces SET plan_cancelled = TRUE WHERE id = ${workspaceId}
     `;
 
-    return { ok: true, cancelAt: user?.planRenewsAt };
+    return { ok: true, cancelAt: ws?.planRenewsAt };
   });

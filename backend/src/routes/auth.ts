@@ -20,20 +20,27 @@ async function verifyTurnstile(token: string, ip: string): Promise<boolean> {
   return data.success === true;
 }
 
+function makeSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize('NFD')
+    .split('').filter(c => c.charCodeAt(0) < 0x0300 || c.charCodeAt(0) > 0x036f).join('')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'workspace';
+}
+
 export const authRoutes = new Elysia({ prefix: '/api/auth' })
   .use(jwt({ name: 'jwt', secret: JWT_SECRET }))
 
   // POST /api/auth/login
   .post('/login',
     async ({ body, jwt, cookie: { auth }, set, request, server }) => {
-      // IP real: X-Real-IP (setado pelo Nginx com $remote_addr — não spoofável pelo cliente)
-      // Fallback: último valor de X-Forwarded-For (adicionado pelo proxy, não pelo cliente)
       const xRealIp = request.headers.get('x-real-ip')?.trim();
       const xForwardedFor = request.headers.get('x-forwarded-for');
       const lastForwardedIp = xForwardedFor?.split(',').at(-1)?.trim();
       const ip = xRealIp ?? lastForwardedIp ?? server?.requestIP(request)?.address ?? 'unknown';
 
-      // 5 tentativas por IP a cada 15 minutos
       if (!checkRateLimit(`login:${ip}`, 5, 15 * 60 * 1000)) {
         set.status = 429;
         return { error: 'Muitas tentativas. Aguarde 15 minutos antes de tentar novamente.' };
@@ -41,7 +48,6 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
 
       const { email, password, turnstileToken } = body;
 
-      // Valida Turnstile quando a chave secreta está configurada
       if (TURNSTILE_SECRET) {
         if (!turnstileToken) {
           set.status = 400;
@@ -55,12 +61,15 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
       }
 
       const [user] = await sql<{
-        id: string; name: string; email: string; mustChangePassword: boolean;
+        id: string; name: string; email: string;
+        mustChangePassword: boolean; workspaceId: string;
       }[]>`
-        SELECT id, name, email, must_change_password AS "mustChangePassword"
+        SELECT id, name, email,
+               must_change_password AS "mustChangePassword",
+               workspace_id         AS "workspaceId"
         FROM users
-        WHERE email          = ${email}
-          AND password_hash  = crypt(${password}, password_hash)
+        WHERE email         = ${email}
+          AND password_hash = crypt(${password}, password_hash)
         LIMIT 1
       `;
 
@@ -72,23 +81,23 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
       const token = await jwt.sign({
         sub:   user.id,
         email: user.email,
+        wid:   user.workspaceId,
         exp:   Math.floor(Date.now() / 1000) + JWT_EXPIRES,
       });
 
-      // HttpOnly — não acessível via JS, protege contra XSS
       auth.set({
         value:    token,
         httpOnly: true,
-        secure:   IS_PROD,   // HTTPS obrigatório em produção
+        secure:   IS_PROD,
         sameSite: 'strict',
         maxAge:   JWT_EXPIRES,
         path:     '/',
       });
 
       return {
-        user:             { id: user.id, name: user.name, email: user.email },
+        user:               { id: user.id, name: user.name, email: user.email },
         mustChangePassword: user.mustChangePassword,
-        expiresIn:        JWT_EXPIRES,
+        expiresIn:          JWT_EXPIRES,
       };
     },
     {
@@ -114,14 +123,20 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
       }
 
       const [user] = await sql<{
-        id: string; name: string; email: string;
+        id: string; name: string; email: string; role: string;
         preferences: Record<string,unknown>; createdAt: Date;
         mustChangePassword: boolean;
+        workspaceId: string; workspaceName: string; workspaceSlug: string;
       }[]>`
-        SELECT id, name, email, preferences, created_at AS "createdAt",
-               must_change_password AS "mustChangePassword"
-        FROM users
-        WHERE id = ${payload.sub as string}
+        SELECT u.id, u.name, u.email, u.role, u.preferences,
+               u.created_at         AS "createdAt",
+               u.must_change_password AS "mustChangePassword",
+               u.workspace_id       AS "workspaceId",
+               w.name               AS "workspaceName",
+               w.slug               AS "workspaceSlug"
+        FROM users u
+        LEFT JOIN workspaces w ON w.id = u.workspace_id
+        WHERE u.id = ${payload.sub as string}
         LIMIT 1
       `;
 
@@ -130,7 +145,7 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
     }
   )
 
-  // POST /api/auth/register
+  // POST /api/auth/register — cria novo workspace + usuário admin
   .post('/register',
     async ({ body, jwt, cookie: { auth }, set, request, server }) => {
       const xRealIp = request.headers.get('x-real-ip')?.trim();
@@ -138,20 +153,12 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
       const lastForwardedIp = xForwardedFor?.split(',').at(-1)?.trim();
       const ip = xRealIp ?? lastForwardedIp ?? server?.requestIP(request)?.address ?? 'unknown';
 
-      // 3 registros por IP por hora
       if (!checkRateLimit(`register:${ip}`, 3, 60 * 60 * 1000)) {
         set.status = 429;
         return { error: 'Muitas tentativas. Aguarde antes de tentar novamente.' };
       }
 
-      // Registros públicos só são permitidos no primeiro uso (sem nenhum usuário no banco)
-      const [anyUser] = await sql`SELECT id FROM users LIMIT 1`;
-      if (anyUser) {
-        set.status = 403;
-        return { error: 'Registros públicos estão desabilitados. Contate o administrador.' };
-      }
-
-      const { name, email, password } = body;
+      const { workspaceName, name, email, password } = body;
 
       const [existing] = await sql`SELECT id FROM users WHERE email = ${email} LIMIT 1`;
       if (existing) {
@@ -159,15 +166,39 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
         return { error: 'E-mail já cadastrado' };
       }
 
+      // Gera slug único para o workspace
+      const base = makeSlug(workspaceName);
+      let slug = base;
+      let tries = 0;
+      while (true) {
+        const [taken] = await sql`SELECT id FROM workspaces WHERE slug = ${slug}`;
+        if (!taken) break;
+        slug = `${base}-${++tries}`;
+      }
+
+      const [workspace] = await sql<{ id: string }[]>`
+        INSERT INTO workspaces (name, slug)
+        VALUES (${workspaceName}, ${slug})
+        RETURNING id
+      `;
+
       const [user] = await sql<{ id: string; name: string; email: string }[]>`
-        INSERT INTO users (name, email, password_hash, must_change_password)
-        VALUES (${name}, ${email}, crypt(${password}, gen_salt('bf', 10)), TRUE)
+        INSERT INTO users (name, email, password_hash, workspace_id, role, must_change_password)
+        VALUES (
+          ${name},
+          ${email},
+          crypt(${password}, gen_salt('bf', 10)),
+          ${workspace.id},
+          'admin',
+          FALSE
+        )
         RETURNING id, name, email
       `;
 
       const token = await jwt.sign({
         sub:   user.id,
         email: user.email,
+        wid:   workspace.id,
         exp:   Math.floor(Date.now() / 1000) + JWT_EXPIRES,
       });
 
@@ -181,18 +212,24 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
       });
 
       set.status = 201;
-      return { user: { id: user.id, name: user.name, email: user.email }, mustChangePassword: true, expiresIn: JWT_EXPIRES };
+      return {
+        user:               { id: user.id, name: user.name, email: user.email },
+        workspace:          { id: workspace.id, name: workspaceName, slug },
+        mustChangePassword: false,
+        expiresIn:          JWT_EXPIRES,
+      };
     },
     {
       body: t.Object({
-        name:     t.String({ minLength: 2, maxLength: 100 }),
-        email:    t.String({ format: 'email', maxLength: 254 }),
-        password: t.String({ minLength: 6, maxLength: 1000 }),
+        workspaceName: t.String({ minLength: 2, maxLength: 100 }),
+        name:          t.String({ minLength: 2, maxLength: 100 }),
+        email:         t.String({ format: 'email', maxLength: 254 }),
+        password:      t.String({ minLength: 6, maxLength: 1000 }),
       }),
     }
   )
 
-  // PATCH /api/auth/preferences — salvar preferências de UI do usuário
+  // PATCH /api/auth/preferences
   .patch('/preferences',
     async ({ body, cookie: { auth }, jwt, set }) => {
       const token = auth?.value as string | undefined;
@@ -211,7 +248,7 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
     { body: t.Any() }
   )
 
-  // POST /api/auth/set-password — define nova senha (obrigatório no primeiro acesso)
+  // POST /api/auth/set-password
   .post('/set-password',
     async ({ body, cookie: { auth }, jwt, set }) => {
       const token = auth?.value as string | undefined;
@@ -224,7 +261,7 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
 
       await sql`
         UPDATE users
-        SET password_hash       = crypt(${newPassword}, gen_salt('bf', 10)),
+        SET password_hash        = crypt(${newPassword}, gen_salt('bf', 10)),
             must_change_password = FALSE,
             member_status        = 'active'
         WHERE id = ${payload.sub as string}

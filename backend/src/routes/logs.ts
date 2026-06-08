@@ -25,7 +25,7 @@ export const logRoutes = new Elysia({ prefix: '/api/logs' })
 
   // GET /api/logs
   .get('/',
-    async ({ query, userId }) => {
+    async ({ query, workspaceId }) => {
       const { level, search, source, limit = '100' } = query;
       const take = Math.min(Number(limit), 500);
 
@@ -36,7 +36,7 @@ export const logRoutes = new Elysia({ prefix: '/api/logs' })
           id, level, message, source,
           created_at AS "createdAt"
         FROM logs
-        WHERE user_id = ${userId}
+        WHERE workspace_id = ${workspaceId}
           AND (${level  ?? null}::text IS NULL OR level  = ${level  ?? null}::text)
           AND (${source ?? null}::text IS NULL OR source ILIKE ${'%' + (source ?? '') + '%'})
           AND (
@@ -58,7 +58,7 @@ export const logRoutes = new Elysia({ prefix: '/api/logs' })
           COUNT(*) FILTER (WHERE level = 'warn')           AS warn,
           COUNT(*) FILTER (WHERE level = 'error')          AS error
         FROM logs
-        WHERE user_id = ${userId}
+        WHERE workspace_id = ${workspaceId}
       `;
 
       return { data: rows, counts };
@@ -74,7 +74,7 @@ export const logRoutes = new Elysia({ prefix: '/api/logs' })
   )
 
   // GET /api/logs/stream — Server-Sent Events (logs em tempo real)
-  .get('/stream', async ({ userId, set }) => {
+  .get('/stream', async ({ userId, workspaceId, set }) => {
     if (!incStream(userId)) {
       set.status = 429;
       return new Response('Limite de conexões simultâneas atingido.', { status: 429 });
@@ -82,7 +82,7 @@ export const logRoutes = new Elysia({ prefix: '/api/logs' })
 
     let lastId = 0;
     const [latest] = await sql<{ id: number }[]>`
-      SELECT id FROM logs WHERE user_id = ${userId} ORDER BY id DESC LIMIT 1
+      SELECT id FROM logs WHERE workspace_id = ${workspaceId} ORDER BY id DESC LIMIT 1
     `;
     if (latest) lastId = Number(latest.id);
 
@@ -110,7 +110,7 @@ export const logRoutes = new Elysia({ prefix: '/api/logs' })
               SELECT id, level, message, source,
                 to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "createdAt"
               FROM logs
-              WHERE user_id = ${userId} AND id > ${lastId}
+              WHERE workspace_id = ${workspaceId} AND id > ${lastId}
               ORDER BY id ASC LIMIT 50
             `;
             for (const row of rows) {
@@ -122,7 +122,6 @@ export const logRoutes = new Elysia({ prefix: '/api/logs' })
         }
 
         decStream(userId);
-        // Sinaliza fim gracioso quando o timeout é atingido
         if (Date.now() >= deadline) enq('event: timeout\ndata: {}\n\n');
         try { controller.close(); } catch {}
       },
@@ -139,14 +138,14 @@ export const logRoutes = new Elysia({ prefix: '/api/logs' })
     });
   })
 
-  // POST /api/logs — inserir entrada de log
+  // POST /api/logs
   .post('/',
-    async ({ body, set, userId }) => {
+    async ({ body, set, userId, workspaceId }) => {
       const { level, message, source } = body;
 
       const [log] = await sql`
-        INSERT INTO logs (level, message, source, user_id)
-        VALUES (${level}, ${message}, ${source ?? 'system'}, ${userId})
+        INSERT INTO logs (level, message, source, user_id, workspace_id)
+        VALUES (${level}, ${message}, ${source ?? 'system'}, ${userId}, ${workspaceId})
         RETURNING id, level, message, source, created_at AS "createdAt"
       `;
 

@@ -2,17 +2,20 @@ import { Elysia, t } from 'elysia';
 import { authPlugin } from '../plugins/auth';
 import { sql } from '../db';
 
-async function requireAdmin(userId: string): Promise<boolean> {
-  const [u] = await sql<{ role: string }[]>`SELECT role FROM users WHERE id = ${userId}`;
+async function requireAdmin(userId: string, workspaceId: string): Promise<boolean> {
+  const [u] = await sql<{ role: string }[]>`
+    SELECT role FROM users
+    WHERE id = ${userId} AND workspace_id = ${workspaceId}
+  `;
   return u?.role === 'admin';
 }
 
 export const memberRoutes = new Elysia({ prefix: '/api/members' })
   .use(authPlugin)
 
-  // GET /api/members — apenas admins podem ver a lista
-  .get('/', async ({ userId, set }) => {
-    if (!(await requireAdmin(userId))) {
+  // GET /api/members — apenas admins do workspace
+  .get('/', async ({ userId, workspaceId, set }) => {
+    if (!(await requireAdmin(userId, workspaceId))) {
       set.status = 403;
       return { error: 'Acesso negado. Apenas administradores podem gerenciar membros.' };
     }
@@ -25,6 +28,7 @@ export const memberRoutes = new Elysia({ prefix: '/api/members' })
              member_status AS "memberStatus",
              created_at   AS "createdAt"
       FROM users
+      WHERE workspace_id = ${workspaceId}
       ORDER BY created_at ASC
     `;
     return { data: rows, currentUserId: userId };
@@ -32,8 +36,8 @@ export const memberRoutes = new Elysia({ prefix: '/api/members' })
 
   // POST /api/members — convite (apenas admins)
   .post('/',
-    async ({ body, set, userId }) => {
-      if (!(await requireAdmin(userId))) {
+    async ({ body, set, userId, workspaceId }) => {
+      if (!(await requireAdmin(userId, workspaceId))) {
         set.status = 403;
         return { error: 'Acesso negado. Apenas administradores podem convidar membros.' };
       }
@@ -43,7 +47,7 @@ export const memberRoutes = new Elysia({ prefix: '/api/members' })
       const [existing] = await sql`SELECT id FROM users WHERE email = ${email} LIMIT 1`;
       if (existing) {
         set.status = 409;
-        return { error: 'Este e-mail já está cadastrado no workspace.' };
+        return { error: 'Este e-mail já está cadastrado.' };
       }
 
       const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
@@ -52,14 +56,15 @@ export const memberRoutes = new Elysia({ prefix: '/api/members' })
       ).join('');
 
       const [member] = await sql<{ id: string; name: string; email: string; role: string }[]>`
-        INSERT INTO users (name, email, password_hash, role, member_status, must_change_password)
+        INSERT INTO users (name, email, password_hash, role, member_status, must_change_password, workspace_id)
         VALUES (
           ${name},
           ${email},
           crypt(${tempPassword}, gen_salt('bf', 10)),
           ${role},
           'invited',
-          TRUE
+          TRUE,
+          ${workspaceId}
         )
         RETURNING id, name, email, role
       `;
@@ -78,8 +83,8 @@ export const memberRoutes = new Elysia({ prefix: '/api/members' })
 
   // PATCH /api/members/:id — alterar papel (apenas admins)
   .patch('/:id',
-    async ({ params, body, userId, set }) => {
-      if (!(await requireAdmin(userId))) {
+    async ({ params, body, userId, workspaceId, set }) => {
+      if (!(await requireAdmin(userId, workspaceId))) {
         set.status = 403;
         return { error: 'Acesso negado. Apenas administradores podem alterar papéis.' };
       }
@@ -92,6 +97,7 @@ export const memberRoutes = new Elysia({ prefix: '/api/members' })
       const [updated] = await sql<{ id: string; name: string; email: string; role: string }[]>`
         UPDATE users SET role = ${body.role}
         WHERE id = ${params.id}
+          AND workspace_id = ${workspaceId}
         RETURNING id, name, email, role
       `;
 
@@ -106,8 +112,8 @@ export const memberRoutes = new Elysia({ prefix: '/api/members' })
   )
 
   // DELETE /api/members/:id — apenas admins
-  .delete('/:id', async ({ params, userId, set }) => {
-    if (!(await requireAdmin(userId))) {
+  .delete('/:id', async ({ params, userId, workspaceId, set }) => {
+    if (!(await requireAdmin(userId, workspaceId))) {
       set.status = 403;
       return { error: 'Acesso negado. Apenas administradores podem remover membros.' };
     }
@@ -118,13 +124,13 @@ export const memberRoutes = new Elysia({ prefix: '/api/members' })
     }
 
     const [target] = await sql<{ role: string }[]>`
-      SELECT role FROM users WHERE id = ${params.id}
+      SELECT role FROM users WHERE id = ${params.id} AND workspace_id = ${workspaceId}
     `;
     if (!target) { set.status = 404; return { error: 'Membro não encontrado.' }; }
 
     if (target.role === 'admin') {
       const [{ count }] = await sql<{ count: string }[]>`
-        SELECT COUNT(*) AS count FROM users WHERE role = 'admin'
+        SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND workspace_id = ${workspaceId}
       `;
       if (parseInt(count) <= 1) {
         set.status = 400;
@@ -132,7 +138,7 @@ export const memberRoutes = new Elysia({ prefix: '/api/members' })
       }
     }
 
-    await sql`DELETE FROM users WHERE id = ${params.id}`;
+    await sql`DELETE FROM users WHERE id = ${params.id} AND workspace_id = ${workspaceId}`;
     set.status = 204;
     return null;
   });

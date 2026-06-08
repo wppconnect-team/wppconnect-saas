@@ -16,7 +16,7 @@ export const tokenRoutes = new Elysia({ prefix: '/api/tokens' })
 
   // GET /api/tokens
   .get('/',
-    async ({ userId }) => {
+    async ({ workspaceId }) => {
       const rows = await sql<{
         id: number; name: string; tokenPrefix: string; scopes: string[];
         lastUsedAt: Date | null; createdAt: Date;
@@ -28,7 +28,7 @@ export const tokenRoutes = new Elysia({ prefix: '/api/tokens' })
           last_used_at  AS "lastUsedAt",
           created_at    AS "createdAt"
         FROM api_tokens
-        WHERE user_id = ${userId}
+        WHERE workspace_id = ${workspaceId}
         ORDER BY created_at DESC
       `;
 
@@ -38,14 +38,14 @@ export const tokenRoutes = new Elysia({ prefix: '/api/tokens' })
 
   // POST /api/tokens
   .post('/',
-    async ({ body, set, userId }) => {
+    async ({ body, set, userId, workspaceId }) => {
       const { name, scopes } = body;
       const env = process.env.NODE_ENV ?? 'development';
       const { plain, hash, prefix } = generateToken(env);
 
       const [token] = await sql`
-        INSERT INTO api_tokens (name, token_hash, token_prefix, scopes, user_id)
-        VALUES (${name}, ${hash}, ${prefix}, ${scopes ?? []}, ${userId})
+        INSERT INTO api_tokens (name, token_hash, token_prefix, scopes, user_id, workspace_id)
+        VALUES (${name}, ${hash}, ${prefix}, ${scopes ?? []}, ${userId}, ${workspaceId})
         RETURNING
           id, name,
           token_prefix AS "tokenPrefix",
@@ -54,7 +54,6 @@ export const tokenRoutes = new Elysia({ prefix: '/api/tokens' })
       `;
 
       set.status = 201;
-      // plain só é retornado uma vez — não fica armazenado
       return { data: token, token: plain };
     },
     {
@@ -65,9 +64,9 @@ export const tokenRoutes = new Elysia({ prefix: '/api/tokens' })
     }
   )
 
-  // PUT /api/tokens/:id  (editar nome/escopos)
+  // PUT /api/tokens/:id
   .put('/:id',
-    async ({ params, body, set, userId }) => {
+    async ({ params, body, set, workspaceId }) => {
       const { name, scopes } = body;
 
       const [updated] = await sql`
@@ -76,7 +75,7 @@ export const tokenRoutes = new Elysia({ prefix: '/api/tokens' })
           name   = COALESCE(${name   ?? null}::text,    name),
           scopes = COALESCE(${scopes ?? null}::text[],  scopes)
         WHERE id = ${Number(params.id)}
-          AND user_id = ${userId}
+          AND workspace_id = ${workspaceId}
         RETURNING
           id, name,
           token_prefix AS "tokenPrefix",
@@ -96,13 +95,13 @@ export const tokenRoutes = new Elysia({ prefix: '/api/tokens' })
     }
   )
 
-  // DELETE /api/tokens/:id  (revogar)
+  // DELETE /api/tokens/:id
   .delete('/:id',
-    async ({ params, set, userId }) => {
+    async ({ params, set, workspaceId }) => {
       const [deleted] = await sql`
         DELETE FROM api_tokens
         WHERE id = ${Number(params.id)}
-          AND user_id = ${userId}
+          AND workspace_id = ${workspaceId}
         RETURNING id
       `;
       if (!deleted) { set.status = 404; return { error: 'Token não encontrado' }; }

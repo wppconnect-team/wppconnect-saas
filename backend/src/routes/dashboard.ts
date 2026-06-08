@@ -6,7 +6,7 @@ export const dashboardRoutes = new Elysia({ prefix: '/api/dashboard' })
   .use(authPlugin)
 
   .get('/',
-    async ({ query, userId }) => {
+    async ({ query, workspaceId }) => {
       const period = query.period ?? '7d';
 
       const intervalMs = period === '24h' ? 86_400_000
@@ -24,7 +24,7 @@ export const dashboardRoutes = new Elysia({ prefix: '/api/dashboard' })
           COUNT(*) FILTER (WHERE status IN ('pending','qr'))  AS pending,
           COUNT(*) FILTER (WHERE status = 'offline')          AS offline,
           COALESCE(SUM(messages_today), 0)                    AS "messagesToday"
-        FROM sessions WHERE user_id = ${userId}
+        FROM sessions WHERE workspace_id = ${workspaceId}
       `;
 
       const [webhookStats] = await sql<{
@@ -34,14 +34,14 @@ export const dashboardRoutes = new Elysia({ prefix: '/api/dashboard' })
           COUNT(*)                                              AS total,
           COUNT(*) FILTER (WHERE status = 'falhando')         AS failing,
           COALESCE(AVG(delivery_rate), 0)                     AS "avgDelivery"
-        FROM webhooks WHERE user_id = ${userId}
+        FROM webhooks WHERE workspace_id = ${workspaceId}
       `;
 
       const recentLogs = await sql<{
         id: number; level: string; message: string; source: string; createdAt: Date;
       }[]>`
         SELECT id, level, message, source, created_at AS "createdAt"
-        FROM logs WHERE user_id = ${userId}
+        FROM logs WHERE workspace_id = ${workspaceId}
         ORDER BY created_at DESC LIMIT 10
       `;
 
@@ -49,15 +49,14 @@ export const dashboardRoutes = new Elysia({ prefix: '/api/dashboard' })
         id: string; name: string; phone: string; status: string; messagesToday: number;
       }[]>`
         SELECT id, name, phone, status, messages_today AS "messagesToday"
-        FROM sessions WHERE user_id = ${userId}
+        FROM sessions WHERE workspace_id = ${workspaceId}
         ORDER BY messages_today DESC LIMIT 5
       `;
 
-      // Atividade (logs) agrupada por bucket temporal
       const chartRaw = await sql<{ bucket: Date; count: string }[]>`
         SELECT date_trunc(${truncUnit}, created_at) AS bucket, COUNT(*) AS count
         FROM logs
-        WHERE user_id = ${userId} AND created_at >= ${since}
+        WHERE workspace_id = ${workspaceId} AND created_at >= ${since}
         GROUP BY 1 ORDER BY 1 ASC
       `;
 

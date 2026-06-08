@@ -7,7 +7,7 @@ export const groupRoutes = new Elysia({ prefix: '/api/groups' })
 
   // GET /api/groups
   .get('/',
-    async ({ query, userId }) => {
+    async ({ query, workspaceId }) => {
       const { search, status } = query;
 
       const rows = await sql<{
@@ -22,7 +22,7 @@ export const groupRoutes = new Elysia({ prefix: '/api/groups' })
           messages_count      AS "messagesCount",
           last_interaction    AS "lastInteraction"
         FROM groups
-        WHERE user_id = ${userId}
+        WHERE workspace_id = ${workspaceId}
           AND (${status ?? null}::text IS NULL OR status = ${status ?? null}::text)
           AND (
             ${search ?? null}::text IS NULL
@@ -41,7 +41,7 @@ export const groupRoutes = new Elysia({ prefix: '/api/groups' })
           COUNT(*) FILTER (WHERE status = 'inativo')       AS inativos,
           COALESCE(SUM(participants_count), 0)             AS "totalParticipants"
         FROM groups
-        WHERE user_id = ${userId}
+        WHERE workspace_id = ${workspaceId}
       `;
 
       return { data: rows, stats };
@@ -56,18 +56,19 @@ export const groupRoutes = new Elysia({ prefix: '/api/groups' })
 
   // POST /api/groups
   .post('/',
-    async ({ body, set, userId }) => {
+    async ({ body, set, userId, workspaceId }) => {
       const { name, description, participantsCount, tags, status } = body;
 
       const [group] = await sql`
-        INSERT INTO groups (name, description, participants_count, tags, status, user_id)
+        INSERT INTO groups (name, description, participants_count, tags, status, user_id, workspace_id)
         VALUES (
           ${name},
           ${description ?? ''},
           ${participantsCount ?? 0},
           ${tags ?? []},
           ${status ?? 'ativo'},
-          ${userId}
+          ${userId},
+          ${workspaceId}
         )
         RETURNING
           id, name, description,
@@ -93,7 +94,7 @@ export const groupRoutes = new Elysia({ prefix: '/api/groups' })
 
   // PUT /api/groups/:id
   .put('/:id',
-    async ({ params, body, set, userId }) => {
+    async ({ params, body, set, workspaceId }) => {
       const { name, description, participantsCount, tags, status } = body;
 
       const [updated] = await sql`
@@ -105,7 +106,7 @@ export const groupRoutes = new Elysia({ prefix: '/api/groups' })
           tags               = COALESCE(${tags               ?? null}::text[],  tags),
           status             = COALESCE(${status             ?? null}::text,    status)
         WHERE id = ${Number(params.id)}
-          AND user_id = ${userId}
+          AND workspace_id = ${workspaceId}
         RETURNING
           id, name, description,
           participants_count  AS "participantsCount",
@@ -130,11 +131,11 @@ export const groupRoutes = new Elysia({ prefix: '/api/groups' })
 
   // DELETE /api/groups/:id
   .delete('/:id',
-    async ({ params, set, userId }) => {
+    async ({ params, set, workspaceId }) => {
       const [deleted] = await sql`
         DELETE FROM groups
         WHERE id = ${Number(params.id)}
-          AND user_id = ${userId}
+          AND workspace_id = ${workspaceId}
         RETURNING id
       `;
       if (!deleted) { set.status = 404; return { error: 'Grupo não encontrado' }; }

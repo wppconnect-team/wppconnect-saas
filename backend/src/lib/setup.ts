@@ -20,7 +20,6 @@ function generateTempPassword(): string {
     chars.push(all[bytes[i] % all.length]);
   }
 
-  // Fisher-Yates com bytes criptográficos
   const shuffle = randomBytes(20);
   for (let i = chars.length - 1; i > 0; i--) {
     const j = shuffle[i] % (i + 1);
@@ -38,9 +37,22 @@ export async function runSetup(): Promise<void> {
     const email    = process.env.ADMIN_EMAIL ?? 'admin@localhost';
     const password = generateTempPassword();
 
+    const [workspace] = await sql<{ id: string }[]>`
+      INSERT INTO workspaces (name, slug)
+      VALUES ('Workspace Principal', 'workspace-principal')
+      RETURNING id
+    `;
+
     await sql`
-      INSERT INTO users (name, email, password_hash, must_change_password)
-      VALUES ('Admin', ${email}, crypt(${password}, gen_salt('bf', 10)), TRUE)
+      INSERT INTO users (name, email, password_hash, workspace_id, role, must_change_password)
+      VALUES (
+        'Admin',
+        ${email},
+        crypt(${password}, gen_salt('bf', 10)),
+        ${workspace.id},
+        'admin',
+        TRUE
+      )
     `;
 
     const sep = '═'.repeat(56);

@@ -34,7 +34,7 @@ export const webhookRoutes = new Elysia({ prefix: '/api/webhooks' })
 
   // GET /api/webhooks
   .get('/',
-    async ({ query, userId }) => {
+    async ({ query, workspaceId }) => {
       const { status } = query;
 
       const rows = await sql<{
@@ -47,7 +47,7 @@ export const webhookRoutes = new Elysia({ prefix: '/api/webhooks' })
           last_at       AS "lastAt",
           delivery_rate AS "deliveryRate"
         FROM webhooks
-        WHERE user_id = ${userId}
+        WHERE workspace_id = ${workspaceId}
           AND (${status ?? null}::text IS NULL OR status = ${status ?? null}::text)
         ORDER BY created_at DESC
       `;
@@ -61,7 +61,7 @@ export const webhookRoutes = new Elysia({ prefix: '/api/webhooks' })
           COUNT(*) FILTER (WHERE status = 'falhando')      AS falhando,
           COALESCE(AVG(delivery_rate), 0)                  AS "avgRate"
         FROM webhooks
-        WHERE user_id = ${userId}
+        WHERE workspace_id = ${workspaceId}
       `;
 
       return { data: rows, stats };
@@ -75,7 +75,7 @@ export const webhookRoutes = new Elysia({ prefix: '/api/webhooks' })
 
   // POST /api/webhooks
   .post('/',
-    async ({ body, set, userId }) => {
+    async ({ body, set, userId, workspaceId }) => {
       const { url, events } = body;
 
       if (isPrivateUrl(url)) {
@@ -84,8 +84,8 @@ export const webhookRoutes = new Elysia({ prefix: '/api/webhooks' })
       }
 
       const [webhook] = await sql`
-        INSERT INTO webhooks (url, events, user_id)
-        VALUES (${url}, ${events}, ${userId})
+        INSERT INTO webhooks (url, events, user_id, workspace_id)
+        VALUES (${url}, ${events}, ${userId}, ${workspaceId})
         RETURNING
           id, url, events, status,
           last_status   AS "lastStatus",
@@ -93,7 +93,7 @@ export const webhookRoutes = new Elysia({ prefix: '/api/webhooks' })
           delivery_rate AS "deliveryRate"
       `;
 
-      await insertLog('info', `Webhook criado: ${url}`, 'webhook', userId);
+      await insertLog('info', `Webhook criado: ${url}`, 'webhook', userId, workspaceId);
 
       set.status = 201;
       return { data: webhook };
@@ -108,7 +108,7 @@ export const webhookRoutes = new Elysia({ prefix: '/api/webhooks' })
 
   // PUT /api/webhooks/:id
   .put('/:id',
-    async ({ params, body, set, userId }) => {
+    async ({ params, body, set, workspaceId }) => {
       const { url, events, status } = body;
 
       if (url && isPrivateUrl(url)) {
@@ -123,7 +123,7 @@ export const webhookRoutes = new Elysia({ prefix: '/api/webhooks' })
           events = COALESCE(${events ?? null}::text[], events),
           status = COALESCE(${status ?? null}::text,  status)
         WHERE id = ${Number(params.id)}
-          AND user_id = ${userId}
+          AND workspace_id = ${workspaceId}
         RETURNING
           id, url, events, status,
           last_status   AS "lastStatus",
@@ -143,16 +143,15 @@ export const webhookRoutes = new Elysia({ prefix: '/api/webhooks' })
     }
   )
 
-  // POST /api/webhooks/:id/test — dispara uma requisição de teste
+  // POST /api/webhooks/:id/test
   .post('/:id/test',
-    async ({ params, set, userId }) => {
+    async ({ params, set, workspaceId }) => {
       const [webhook] = await sql<{ id: number; url: string }[]>`
         SELECT id, url FROM webhooks
-        WHERE id = ${Number(params.id)} AND user_id = ${userId}
+        WHERE id = ${Number(params.id)} AND workspace_id = ${workspaceId}
       `;
       if (!webhook) { set.status = 404; return { error: 'Webhook não encontrado' }; }
 
-      // Bloqueia SSRF mesmo para webhooks já cadastrados (segurança em profundidade)
       if (isPrivateUrl(webhook.url)) {
         set.status = 422;
         return { error: 'URL inválida. Endereços de rede privada não são permitidos.' };
@@ -177,7 +176,7 @@ export const webhookRoutes = new Elysia({ prefix: '/api/webhooks' })
         await sql`
           UPDATE webhooks
           SET last_status = ${res.status}, last_at = NOW()
-          WHERE id = ${Number(params.id)} AND user_id = ${userId}
+          WHERE id = ${Number(params.id)} AND workspace_id = ${workspaceId}
         `;
 
         return { status: res.status, ok: res.ok, body: body.slice(0, 500) };
@@ -190,16 +189,16 @@ export const webhookRoutes = new Elysia({ prefix: '/api/webhooks' })
 
   // DELETE /api/webhooks/:id
   .delete('/:id',
-    async ({ params, set, userId }) => {
+    async ({ params, set, userId, workspaceId }) => {
       const [deleted] = await sql`
         DELETE FROM webhooks
         WHERE id = ${Number(params.id)}
-          AND user_id = ${userId}
+          AND workspace_id = ${workspaceId}
         RETURNING id
       `;
       if (!deleted) { set.status = 404; return { error: 'Webhook não encontrado' }; }
 
-      await insertLog('info', `Webhook #${params.id} removido`, 'webhook', userId);
+      await insertLog('info', `Webhook #${params.id} removido`, 'webhook', userId, workspaceId);
 
       set.status = 204;
       return null;

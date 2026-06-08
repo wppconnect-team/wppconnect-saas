@@ -61,6 +61,113 @@ function ThemeToggle({ theme, setTheme }) {
   );
 }
 
+function RegisterForm({ onLogin, onBack }) {
+  const [workspaceName, setWorkspaceName] = React.useState('');
+  const [name, setName]       = React.useState('');
+  const [email, setEmail]     = React.useState('');
+  const [pwd, setPwd]         = React.useState('');
+  const [pwdConfirm, setPwdConfirm] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError]     = React.useState('');
+
+  const submit = async (e) => {
+    e?.preventDefault();
+    if (pwd !== pwdConfirm) { setError('As senhas não coincidem.'); return; }
+    setLoading(true);
+    setError('');
+    try {
+      await authService.register(workspaceName, name, email, pwd);
+      onLogin(false, false);
+    } catch (err) {
+      setError(err?.error ?? 'Erro ao criar workspace. Tente novamente.');
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="login-form">
+      <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div className="brand-mark">Wpp</div>
+        <div className="brand-name">Wppconnect<small>workspace</small></div>
+      </div>
+
+      <h1>Criar workspace</h1>
+      <p className="sub">Comece grátis. Sem cartão de crédito.</p>
+
+      <form onSubmit={submit}>
+        <div className="field">
+          <input
+            type="text"
+            placeholder="Nome da empresa ou equipe"
+            value={workspaceName}
+            onChange={(e) => setWorkspaceName(e.target.value)}
+            required
+            minLength={2}
+            maxLength={100}
+          />
+        </div>
+        <div className="field">
+          <input
+            type="text"
+            placeholder="Seu nome completo"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            minLength={2}
+            maxLength={100}
+          />
+        </div>
+        <div className="field">
+          <input
+            type="email"
+            placeholder="seuemail@empresa.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+        </div>
+        <div className="field">
+          <input
+            type="password"
+            placeholder="Senha (mínimo 6 caracteres)"
+            value={pwd}
+            onChange={(e) => setPwd(e.target.value)}
+            required
+            minLength={6}
+          />
+        </div>
+        <div className="field">
+          <input
+            type="password"
+            placeholder="Confirmar senha"
+            value={pwdConfirm}
+            onChange={(e) => setPwdConfirm(e.target.value)}
+            required
+          />
+        </div>
+
+        {error && (
+          <div style={{ padding: '8px 12px', background: 'var(--rose-soft)', border: '1px solid var(--rose-border)', color: 'var(--rose-ink)', fontSize: 13, marginBottom: 8 }}>
+            {error}
+          </div>
+        )}
+
+        <button type="submit" className="btn primary block" disabled={loading}>
+          {loading ? 'Criando workspace…' : 'Criar workspace'}
+        </button>
+      </form>
+
+      <div className="login-foot">
+        Já tem conta?{' '}
+        <button onClick={onBack}
+          style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', padding: 0, fontSize: 'inherit' }}>
+          Entrar
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function LoginPage({ onLogin, theme, setTheme }) {
   const [email, setEmail]     = React.useState('');
   const [pwd, setPwd]         = React.useState('');
@@ -69,8 +176,8 @@ export default function LoginPage({ onLogin, theme, setTheme }) {
   const [legal, setLegal]               = React.useState(null);
   const [turnstileToken, setTurnstileToken] = React.useState(null);
   const [turnstileError, setTurnstileError] = React.useState(false);
+  const [showRegister, setShowRegister] = React.useState(false);
 
-  // Bloqueia envio se Turnstile está configurado mas o desafio não foi concluído
   const turnstileBlocking = TURNSTILE_SITE_KEY && !turnstileToken;
 
   const submit = async (e) => {
@@ -84,17 +191,61 @@ export default function LoginPage({ onLogin, theme, setTheme }) {
     } catch (err) {
       setLoginError(err?.error ?? 'Email ou senha inválidos');
       setLoading(null);
-      // Reseta o widget para forçar nova verificação após erro
       setTurnstileToken(null);
     }
   };
 
-  // SSO simulado — só disponível quando VITE_DEMO_MODE=true no build
   const ssoLogin = (provider) => {
     if (!DEMO_MODE) return;
     setLoading(provider);
     setTimeout(() => onLogin(true), 700);
   };
+
+  if (showRegister) {
+    return (
+      <>
+      {legal === 'termos'      && <TermosPage      onClose={() => setLegal(null)}/>}
+      {legal === 'privacidade' && <PrivacidadePage onClose={() => setLegal(null)}/>}
+      <div className="login-shell">
+        <ThemeToggle theme={theme} setTheme={setTheme}/>
+        <div className="login-form-wrap">
+          <RegisterForm onLogin={onLogin} onBack={() => setShowRegister(false)}/>
+        </div>
+        <aside className="login-aside">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--ink-3)', fontSize: 12.5 }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', animation: 'pulse 2s infinite' }}/>
+            API operacional · 99.98% últimos 30d
+          </div>
+          <div className="login-quote">
+            <span className="tag">Multi-tenant</span>
+            <h2>Cada empresa tem seu próprio workspace isolado.</h2>
+            <p>
+              Dados, sessões, contatos e webhooks completamente separados por empresa.
+              Convide sua equipe e gerencie permissões por papel.
+            </p>
+            <div className="login-stats">
+              <div className="s"><b>+12.4k</b><span>workspaces ativos</span></div>
+              <div className="s"><b>320M</b><span>mensagens/mês</span></div>
+              <div className="s"><b>99.9%</b><span>SLA de entrega</span></div>
+            </div>
+          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--ink-4)' }}>
+            © 2026 Wppconnect ·{' '}
+            <button onClick={() => setLegal('termos')}
+              style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0, fontSize: 'inherit', textDecoration: 'underline' }}>
+              Termos
+            </button>
+            {' · '}
+            <button onClick={() => setLegal('privacidade')}
+              style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0, fontSize: 'inherit', textDecoration: 'underline' }}>
+              Privacidade
+            </button>
+          </div>
+        </aside>
+      </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -143,7 +294,6 @@ export default function LoginPage({ onLogin, theme, setTheme }) {
             </div>
           )}
           {DEMO_MODE && <div className="divider">ou com email</div>}
-
           {!DEMO_MODE && <div className="divider">Acesse com sua conta</div>}
 
           <form onSubmit={submit}>
@@ -184,7 +334,11 @@ export default function LoginPage({ onLogin, theme, setTheme }) {
           </form>
 
           <div className="login-foot">
-            Ainda não tem conta? <a href="#">Criar workspace</a>
+            Ainda não tem conta?{' '}
+            <button onClick={() => setShowRegister(true)}
+              style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', padding: 0, fontSize: 'inherit' }}>
+              Criar workspace
+            </button>
           </div>
         </div>
       </div>

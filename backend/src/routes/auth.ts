@@ -1,7 +1,9 @@
 import { Elysia, t } from 'elysia';
 import { jwt } from '@elysiajs/jwt';
+import { randomBytes } from 'crypto';
 import { sql } from '../db';
 import { checkRateLimit } from '../plugins/rateLimit';
+import { sendPasswordResetEmail } from '../lib/mailer';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('JWT_SECRET env var is required');
@@ -271,6 +273,89 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
     },
     {
       body: t.Object({
+        newPassword: t.String({ minLength: 6, maxLength: 1000 }),
+      }),
+    }
+  )
+
+  // POST /api/auth/forgot-password
+  .post('/forgot-password',
+    async ({ body, set, request, server }) => {
+      const xRealIp = request.headers.get('x-real-ip')?.trim();
+      const xForwardedFor = request.headers.get('x-forwarded-for');
+      const lastForwardedIp = xForwardedFor?.split(',').at(-1)?.trim();
+      const ip = xRealIp ?? lastForwardedIp ?? server?.requestIP(request)?.address ?? 'unknown';
+
+      // 5 solicitações por IP a cada 15 minutos
+      if (!checkRateLimit(`forgot:${ip}`, 5, 15 * 60 * 1000)) {
+        set.status = 429;
+        return { error: 'Muitas tentativas. Aguarde antes de tentar novamente.' };
+      }
+
+      const { email } = body;
+      const FRONTEND_URL = process.env.FRONTEND_URL ?? 'http://localhost';
+
+      // Mensagem sempre igual — evita enumeração de e-mails
+      const neutral = { message: 'Se o e-mail existir, você receberá instruções em breve.' };
+
+      const [user] = await sql<{ id: string }[]>`
+        SELECT id FROM users WHERE email = ${email} LIMIT 1
+      `;
+      if (!user) return neutral;
+
+      const token   = randomBytes(32).toString('hex');
+      const expires = new Date(Date.now() + 30 * 60_000); // 30 minutos
+
+      await sql`
+        UPDATE users
+        SET reset_token = ${token}, reset_token_expires = ${expires}
+        WHERE id = ${user.id}
+      `;
+
+      const resetUrl = `${FRONTEND_URL}?reset=${token}`;
+      const { devLink } = await sendPasswordResetEmail(email, resetUrl);
+
+      return { ...neutral, ...(devLink ? { devLink } : {}) };
+    },
+    {
+      body: t.Object({
+        email: t.String({ format: 'email', maxLength: 254 }),
+      }),
+    }
+  )
+
+  // POST /api/auth/reset-password
+  .post('/reset-password',
+    async ({ body, set }) => {
+      const { token, newPassword } = body;
+
+      const [user] = await sql<{ id: string }[]>`
+        SELECT id FROM users
+        WHERE reset_token        = ${token}
+          AND reset_token_expires > NOW()
+        LIMIT 1
+      `;
+
+      if (!user) {
+        set.status = 400;
+        return { error: 'Link inválido ou expirado. Solicite um novo link.' };
+      }
+
+      await sql`
+        UPDATE users
+        SET password_hash        = crypt(${newPassword}, gen_salt('bf', 10)),
+            must_change_password = FALSE,
+            member_status        = 'active',
+            reset_token          = NULL,
+            reset_token_expires  = NULL
+        WHERE id = ${user.id}
+      `;
+
+      return { ok: true };
+    },
+    {
+      body: t.Object({
+        token:       t.String({ minLength: 64, maxLength: 64 }),
         newPassword: t.String({ minLength: 6, maxLength: 1000 }),
       }),
     }

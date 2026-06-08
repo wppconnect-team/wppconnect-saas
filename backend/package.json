@@ -6,14 +6,16 @@
     "start": "bun run src/index.ts"
   },
   "dependencies": {
-    "elysia": "^1.1.0",
+    "@elysiajs/bearer": "^1.1.0",
     "@elysiajs/cors": "^1.1.0",
     "@elysiajs/jwt": "^1.1.0",
-    "@elysiajs/bearer": "^1.1.0",
     "@elysiajs/swagger": "^1.1.0",
+    "elysia": "^1.1.0",
+    "nodemailer": "^8.0.10",
     "postgres": "^3.4.4"
   },
   "devDependencies": {
+    "@types/nodemailer": "^8.0.0",
     "bun-types": "latest"
   }
 }

@@ -61,6 +61,163 @@ function ThemeToggle({ theme, setTheme }) {
   );
 }
 
+function ForgotPasswordForm({ onBack }) {
+  const [email, setEmail]   = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+  const [sent, setSent]     = React.useState(false);
+  const [devLink, setDevLink] = React.useState('');
+  const [error, setError]   = React.useState('');
+
+  const submit = async (e) => {
+    e?.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      const res = await authService.forgotPassword(email);
+      setSent(true);
+      if (res?.devLink) setDevLink(res.devLink);
+    } catch {
+      setError('Erro ao processar solicitação. Tente novamente.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="login-form">
+      <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div className="brand-mark">Wpp</div>
+        <div className="brand-name">Wppconnect<small>workspace</small></div>
+      </div>
+
+      <h1>Esqueci minha senha</h1>
+
+      {sent ? (
+        <>
+          <p className="sub">
+            Se o e-mail existir em nossa base, você receberá as instruções de redefinição em breve.
+            Verifique também a pasta de spam.
+          </p>
+          {devLink && (
+            <div style={{ padding: '10px 14px', background: 'var(--panel-2)', border: '1px solid var(--border)', fontSize: 12, wordBreak: 'break-all', marginBottom: 12 }}>
+              <strong style={{ display: 'block', marginBottom: 4, color: 'var(--ink-2)' }}>Link de desenvolvimento (sem SMTP):</strong>
+              <a href={devLink} style={{ color: 'var(--accent)' }}>{devLink}</a>
+            </div>
+          )}
+          <button className="btn primary block" onClick={onBack}>Voltar ao login</button>
+        </>
+      ) : (
+        <>
+          <p className="sub">Informe seu e-mail e enviaremos um link para criar uma nova senha.</p>
+          <form onSubmit={submit}>
+            <div className="field">
+              <input
+                type="email"
+                placeholder="seuemail@empresa.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoFocus
+              />
+            </div>
+            {error && (
+              <div style={{ padding: '8px 12px', background: 'var(--rose-soft)', border: '1px solid var(--rose-border)', color: 'var(--rose-ink)', fontSize: 13, marginBottom: 8 }}>
+                {error}
+              </div>
+            )}
+            <button type="submit" className="btn primary block" disabled={loading}>
+              {loading ? 'Enviando…' : 'Enviar instruções'}
+            </button>
+          </form>
+          <div className="login-foot">
+            <button onClick={onBack}
+              style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', padding: 0, fontSize: 'inherit' }}>
+              ← Voltar ao login
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ResetPasswordForm({ token, onSuccess }) {
+  const [pwd, setPwd]           = React.useState('');
+  const [pwdConfirm, setPwdConfirm] = React.useState('');
+  const [loading, setLoading]   = React.useState(false);
+  const [done, setDone]         = React.useState(false);
+  const [error, setError]       = React.useState('');
+
+  const submit = async (e) => {
+    e?.preventDefault();
+    if (pwd !== pwdConfirm) { setError('As senhas não coincidem.'); return; }
+    setLoading(true);
+    setError('');
+    try {
+      await authService.resetPassword(token, pwd);
+      setDone(true);
+      window.history.replaceState({}, '', window.location.pathname);
+      setTimeout(onSuccess, 2000);
+    } catch (err) {
+      setError(err?.error ?? 'Link inválido ou expirado. Solicite um novo link.');
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="login-form">
+      <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div className="brand-mark">Wpp</div>
+        <div className="brand-name">Wppconnect<small>workspace</small></div>
+      </div>
+
+      <h1>Nova senha</h1>
+
+      {done ? (
+        <>
+          <div style={{ padding: '12px 16px', background: 'var(--green-soft, #f0fdf4)', border: '1px solid var(--green-border, #bbf7d0)', color: 'var(--green-ink, #166534)', fontSize: 14, marginBottom: 16 }}>
+            Senha redefinida com sucesso! Redirecionando para o login…
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="sub">Crie uma senha segura com pelo menos 6 caracteres.</p>
+          <form onSubmit={submit}>
+            <div className="field">
+              <input
+                type="password"
+                placeholder="Nova senha"
+                value={pwd}
+                onChange={(e) => setPwd(e.target.value)}
+                required
+                minLength={6}
+                autoFocus
+              />
+            </div>
+            <div className="field">
+              <input
+                type="password"
+                placeholder="Confirmar nova senha"
+                value={pwdConfirm}
+                onChange={(e) => setPwdConfirm(e.target.value)}
+                required
+              />
+            </div>
+            {error && (
+              <div style={{ padding: '8px 12px', background: 'var(--rose-soft)', border: '1px solid var(--rose-border)', color: 'var(--rose-ink)', fontSize: 13, marginBottom: 8 }}>
+                {error}
+              </div>
+            )}
+            <button type="submit" className="btn primary block" disabled={loading}>
+              {loading ? 'Redefinindo…' : 'Redefinir senha'}
+            </button>
+          </form>
+        </>
+      )}
+    </div>
+  );
+}
+
 function RegisterForm({ onLogin, onBack }) {
   const [workspaceName, setWorkspaceName] = React.useState('');
   const [name, setName]       = React.useState('');
@@ -177,6 +334,13 @@ export default function LoginPage({ onLogin, theme, setTheme }) {
   const [turnstileToken, setTurnstileToken] = React.useState(null);
   const [turnstileError, setTurnstileError] = React.useState(false);
   const [showRegister, setShowRegister] = React.useState(false);
+  const [showForgot, setShowForgot]     = React.useState(false);
+
+  // Detecta ?reset=TOKEN na URL para exibir formulário de redefinição
+  const [resetToken] = React.useState(() => {
+    const p = new URLSearchParams(window.location.search);
+    return p.get('reset') ?? '';
+  });
 
   const turnstileBlocking = TURNSTILE_SITE_KEY && !turnstileToken;
 
@@ -200,6 +364,71 @@ export default function LoginPage({ onLogin, theme, setTheme }) {
     setLoading(provider);
     setTimeout(() => onLogin(true), 700);
   };
+
+  // Tela de redefinição de senha (acessada via link no e-mail: ?reset=TOKEN)
+  if (resetToken) {
+    return (
+      <>
+      {legal === 'termos'      && <TermosPage      onClose={() => setLegal(null)}/>}
+      {legal === 'privacidade' && <PrivacidadePage onClose={() => setLegal(null)}/>}
+      <div className="login-shell">
+        <ThemeToggle theme={theme} setTheme={setTheme}/>
+        <div className="login-form-wrap">
+          <ResetPasswordForm token={resetToken} onSuccess={() => window.location.replace('/')}/>
+        </div>
+        <aside className="login-aside">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--ink-3)', fontSize: 12.5 }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', animation: 'pulse 2s infinite' }}/>
+            API operacional · 99.98% últimos 30d
+          </div>
+          <div className="login-quote">
+            <span className="tag">Segurança</span>
+            <h2>Sua nova senha ficará ativa imediatamente.</h2>
+            <p>Use uma senha forte e única para proteger seu workspace.</p>
+          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--ink-4)' }}>
+            © 2026 Wppconnect ·{' '}
+            <button onClick={() => setLegal('termos')} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0, fontSize: 'inherit', textDecoration: 'underline' }}>Termos</button>
+            {' · '}
+            <button onClick={() => setLegal('privacidade')} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0, fontSize: 'inherit', textDecoration: 'underline' }}>Privacidade</button>
+          </div>
+        </aside>
+      </div>
+      </>
+    );
+  }
+
+  if (showForgot) {
+    return (
+      <>
+      {legal === 'termos'      && <TermosPage      onClose={() => setLegal(null)}/>}
+      {legal === 'privacidade' && <PrivacidadePage onClose={() => setLegal(null)}/>}
+      <div className="login-shell">
+        <ThemeToggle theme={theme} setTheme={setTheme}/>
+        <div className="login-form-wrap">
+          <ForgotPasswordForm onBack={() => setShowForgot(false)}/>
+        </div>
+        <aside className="login-aside">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--ink-3)', fontSize: 12.5 }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', animation: 'pulse 2s infinite' }}/>
+            API operacional · 99.98% últimos 30d
+          </div>
+          <div className="login-quote">
+            <span className="tag">Acesso seguro</span>
+            <h2>Enviamos um link para redefinir sua senha.</h2>
+            <p>Verifique seu e-mail e clique no link para criar uma nova senha. O link expira em 30 minutos.</p>
+          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--ink-4)' }}>
+            © 2026 Wppconnect ·{' '}
+            <button onClick={() => setLegal('termos')} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0, fontSize: 'inherit', textDecoration: 'underline' }}>Termos</button>
+            {' · '}
+            <button onClick={() => setLegal('privacidade')} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0, fontSize: 'inherit', textDecoration: 'underline' }}>Privacidade</button>
+          </div>
+        </aside>
+      </div>
+      </>
+    );
+  }
 
   if (showRegister) {
     return (
@@ -309,7 +538,10 @@ export default function LoginPage({ onLogin, theme, setTheme }) {
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--ink-3)' }}>
                 <input type="checkbox" defaultChecked/> Manter conectado
               </label>
-              <a href="#">Esqueci minha senha</a>
+              <button onClick={() => setShowForgot(true)}
+                style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', padding: 0, fontSize: 'inherit', textDecoration: 'underline' }}>
+                Esqueci minha senha
+              </button>
             </div>
             <Turnstile
               siteKey={TURNSTILE_SITE_KEY}

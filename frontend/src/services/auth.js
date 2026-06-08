@@ -9,4 +9,6 @@ export const authService = {
   logout:            () => api.post('/api/auth/logout', {}),
   updatePreferences: (prefs) => api.patch('/api/auth/preferences', prefs),
   setPassword:       (newPassword) => api.post('/api/auth/set-password', { newPassword }),
+  forgotPassword:    (email) => api.post('/api/auth/forgot-password', { email }),
+  resetPassword:     (token, newPassword) => api.post('/api/auth/reset-password', { token, newPassword }),
 };

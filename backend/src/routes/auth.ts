@@ -3,7 +3,8 @@ import { jwt } from '@elysiajs/jwt';
 import { sql } from '../db';
 import { checkRateLimit } from '../plugins/rateLimit';
 
-const JWT_SECRET         = process.env.JWT_SECRET ?? 'dev-secret-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) throw new Error('JWT_SECRET env var is required');
 const JWT_EXPIRES        = 60 * 60 * 24; // 24 horas
 const IS_PROD            = process.env.NODE_ENV === 'production';
 const TURNSTILE_SECRET   = process.env.TURNSTILE_SECRET_KEY ?? '';

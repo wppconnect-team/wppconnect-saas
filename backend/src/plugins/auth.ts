@@ -1,7 +1,8 @@
 import { Elysia } from 'elysia';
 import { jwt } from '@elysiajs/jwt';
 
-const JWT_SECRET = process.env.JWT_SECRET ?? 'dev-secret-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) throw new Error('JWT_SECRET env var is required');
 
 export const authPlugin = new Elysia({ name: 'auth-plugin' })
   .use(jwt({ name: 'jwt', secret: JWT_SECRET }))

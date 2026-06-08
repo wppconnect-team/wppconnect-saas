@@ -13,6 +13,7 @@ import { dashboardRoutes } from './routes/dashboard';
 import { groupRoutes }     from './routes/groups';
 import { memberRoutes }    from './routes/members';
 import { planRoutes }      from './routes/plan';
+import { runSetup }        from './lib/setup';
 
 const PORT = Number(process.env.PORT ?? 3000);
 
@@ -86,5 +87,7 @@ const app = new Elysia()
   })
 
   .listen(PORT);
+
+await runSetup();
 
 console.log(`🦊  Wppconnect API → http://localhost:${PORT}`);

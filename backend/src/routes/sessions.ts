@@ -3,8 +3,9 @@ import { authPlugin } from '../plugins/auth';
 import { sql } from '../db';
 import { insertLog } from '../lib/log';
 
-const WPP_SERVER     = process.env.WPP_SERVER     ?? 'http://localhost:21465/api';
-const WPP_SECRET_KEY = process.env.WPP_SECRET_KEY ?? 'THISISMYSECURETOKEN';
+const WPP_SERVER     = process.env.WPP_SERVER ?? 'http://localhost:21465/api';
+const WPP_SECRET_KEY = process.env.WPP_SECRET_KEY;
+if (!WPP_SECRET_KEY) throw new Error('WPP_SECRET_KEY env var is required');
 
 export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
   .use(authPlugin)

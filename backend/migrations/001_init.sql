@@ -94,32 +94,30 @@ CREATE INDEX IF NOT EXISTS idx_logs_created_at   ON logs(created_at DESC);
 -- Dados iniciais
 -- ──────────────────────────────────────────
 
--- Usuário admin (senha: admin123)
-INSERT INTO users (name, email, password_hash)
-SELECT 'Admin', 'admin@wppconnect.io', crypt('admin123', gen_salt('bf', 10))
-WHERE NOT EXISTS (SELECT 1 FROM users WHERE email = 'admin@wppconnect.io');
+-- Nenhum usuário admin padrão é criado aqui.
+-- No primeiro acesso, utilize POST /api/auth/register para criar o administrador inicial.
 
 -- Sessões de demonstração
 INSERT INTO sessions (id, name, phone, status, tag, messages_today, last_activity) VALUES
-  ('wa_01', 'Suporte Brasil',      '+55 11 94821-3307', 'connected', 'atendimento', 1243, 'há 2 min'),
-  ('wa_02', 'Vendas Outbound',     '+55 21 98712-6540', 'qr',        'marketing',      0, '—'),
-  ('wa_03', 'Notificações CRM',    '+55 31 99120-7788', 'pending',   'sistema',       87, 'há 1 h'),
-  ('wa_04', 'Recuperação Checkout','+55 11 95432-1100', 'offline',   'recuperacao',    0, 'há 3 d'),
-  ('wa_05', 'Onboarding Clientes', '+55 41 99633-4822', 'connected', 'onboarding',   318, 'há 12 min')
+  ('wa_01', 'Suporte Brasil',       '+55 11 90000-0001', 'connected', 'atendimento', 1243, 'há 2 min'),
+  ('wa_02', 'Vendas Outbound',      '+55 11 90000-0002', 'qr',        'marketing',      0, '—'),
+  ('wa_03', 'Notificações CRM',     '+55 11 90000-0003', 'pending',   'sistema',       87, 'há 1 h'),
+  ('wa_04', 'Recuperação Checkout', '+55 11 90000-0004', 'offline',   'recuperacao',    0, 'há 3 d'),
+  ('wa_05', 'Onboarding Clientes',  '+55 11 90000-0005', 'connected', 'onboarding',   318, 'há 12 min')
 ON CONFLICT (id) DO NOTHING;
 
 -- Contatos de demonstração
 INSERT INTO contacts (name, phone, tags, status, messages_count, last_interaction) VALUES
-  ('Luiza Martins',  '+55 11 98712-6540', ARRAY['VIP','Pro'],  'ativo',   128, 'há 2 min'),
-  ('Carlos Andrade', '+55 21 97564-2211', ARRAY['Trial'],      'ativo',    42, 'há 12 min'),
-  ('Renata Souza',   '+55 31 99120-7788', ARRAY['VIP'],        'ativo',   203, 'há 1 h'),
-  ('João Almeida',   '+55 41 99633-4822', ARRAY['Pro','Anual'],'ativo',    87, 'há 2 h'),
-  ('Bruna Ferreira', '+55 51 98877-1203', ARRAY['Trial'],      'ativo',    18, 'há 5 h'),
-  ('Pedro Lima',     '+55 11 95555-7740', ARRAY['Free'],       'inativo',   5, 'ontem'),
-  ('Amanda Rocha',   '+55 11 98888-2134', ARRAY['Pro'],        'ativo',    67, 'ontem'),
-  ('Felipe Dias',    '+55 11 97654-3210', ARRAY['Free'],       'inativo',   2, '3 dias'),
-  ('Marina Costa',   '+55 11 98765-1122', ARRAY['VIP','Anual'],'ativo',   311, 'há 30 min'),
-  ('Ricardo Neto',   '+55 11 96543-7788', ARRAY['Pro'],        'ativo',    94, 'há 4 h')
+  ('Luiza Martins',  '+55 11 90000-0011', ARRAY['VIP','Pro'],  'ativo',   128, 'há 2 min'),
+  ('Carlos Andrade', '+55 11 90000-0012', ARRAY['Trial'],      'ativo',    42, 'há 12 min'),
+  ('Renata Souza',   '+55 11 90000-0013', ARRAY['VIP'],        'ativo',   203, 'há 1 h'),
+  ('João Almeida',   '+55 11 90000-0014', ARRAY['Pro','Anual'],'ativo',    87, 'há 2 h'),
+  ('Bruna Ferreira', '+55 11 90000-0015', ARRAY['Trial'],      'ativo',    18, 'há 5 h'),
+  ('Pedro Lima',     '+55 11 90000-0016', ARRAY['Free'],       'inativo',   5, 'ontem'),
+  ('Amanda Rocha',   '+55 11 90000-0017', ARRAY['Pro'],        'ativo',    67, 'ontem'),
+  ('Felipe Dias',    '+55 11 90000-0018', ARRAY['Free'],       'inativo',   2, '3 dias'),
+  ('Marina Costa',   '+55 11 90000-0019', ARRAY['VIP','Anual'],'ativo',   311, 'há 30 min'),
+  ('Ricardo Neto',   '+55 11 90000-0020', ARRAY['Pro'],        'ativo',    94, 'há 4 h')
 ON CONFLICT DO NOTHING;
 
 -- Webhooks de demonstração

@@ -538,7 +538,7 @@ export default function LoginPage({ onLogin, theme, setTheme }) {
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--ink-3)' }}>
                 <input type="checkbox" defaultChecked/> Manter conectado
               </label>
-              <button onClick={() => setShowForgot(true)}
+              <button type="button" onClick={() => setShowForgot(true)}
                 style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', padding: 0, fontSize: 'inherit', textDecoration: 'underline' }}>
                 Esqueci minha senha
               </button>

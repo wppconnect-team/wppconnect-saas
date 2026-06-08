@@ -4,8 +4,6 @@
 
 ## Our online channels
 
-Connect with us across various platforms to stay updated and engage in discussions:
-
 [![Discord](https://img.shields.io/discord/844351092758413353?color=blueviolet&label=Discord&logo=discord&style=flat)](https://discord.gg/JU5JGGKGNG)
 [![Telegram Group](https://img.shields.io/badge/Telegram-Group-32AFED?logo=telegram)](https://t.me/wppconnect)
 [![WhatsApp Group](https://img.shields.io/badge/WhatsApp-Group-25D366?logo=whatsapp)](https://chat.whatsapp.com/LJaQu5ZyNvnBPNAVRbX00K)
@@ -13,77 +11,106 @@ Connect with us across various platforms to stay updated and engage in discussio
 
 ---
 
-WhatsApp session management dashboard. Connect multiple instances, manage contacts and groups, configure webhooks, and monitor everything in real time.
+Plataforma **multi-tenant SaaS** para gerenciamento de sessões WhatsApp. Cada empresa tem um workspace isolado com sessões, contatos, webhooks, tokens e logs próprios. Times compartilham o mesmo workspace com controle de acesso por papel (admin / editor / viewer).
 
 ## Stack
 
-| Layer    | Technology                        |
-|----------|-----------------------------------|
-| Frontend | React 19 + Vite 8                 |
-| Backend  | Elysia (Bun) + TypeScript         |
-| Database | PostgreSQL 16                     |
-| Auth     | JWT via HttpOnly cookie (pgcrypto)|
-| Deploy   | Docker + Nginx                    |
+| Camada   | Tecnologia                            |
+|----------|---------------------------------------|
+| Frontend | React 19 + Vite 8                     |
+| Backend  | Elysia + Bun + TypeScript             |
+| Database | PostgreSQL 16                         |
+| Auth     | JWT via HttpOnly cookie + pgcrypto    |
+| Email    | Nodemailer (SMTP configurável)        |
+| Deploy   | Docker Compose + Nginx                |
 
-## Features
+## Funcionalidades
 
-- WhatsApp session management (connect, disconnect, QR code, pairing code)
-- Session configuration modal (name, tag, phone)
-- Contact and group listing, search, and tag filtering
-- Bulk message sending to contacts and groups via WppConnect API
-- Webhook endpoints with delivery rate monitoring
-- API tokens for programmatic integration
-- Real-time event logs with SSE streaming (live badge)
-- Dashboard with aggregated metrics, period selector (24h / 7d / 30d), bar chart, and CSV export
-- Members management — invite, change role (admin / editor / viewer), remove
-- Plan & billing overview with real usage counters
-- HttpOnly cookie authentication + login rate limiting
-- Security headers on all responses (CSP, HSTS, X-Frame-Options…)
-- Cloudflare Turnstile captcha on the login form
+**Sessões & mensagens**
+- Gerenciamento de sessões WhatsApp (conectar, desconectar, QR code, pairing code)
+- Modal de configuração de sessão (nome, tag, telefone, webhook, proxy)
+- Envio em massa para contatos e grupos via API WppConnect
+
+**Workspace & multi-tenancy**
+- Cada empresa cria seu próprio workspace isolado no cadastro
+- Dados completamente separados por workspace (sessões, contatos, webhooks, logs, grupos)
+- Convite de membros com senha temporária e troca obrigatória no primeiro acesso
+- Papéis de acesso: **admin**, **editor**, **viewer**
+
+**Planos & billing**
+- Visão geral do plano com contadores de uso em tempo real (sessões, mensagens, membros)
+- Modal de upgrade com seletor de ciclo mensal / anual
+- Modal de gerenciamento de assinatura com edição de cartão e cancelamento
+
+**Produtividade**
+- Dashboard com métricas, gráfico de barras e seletor de período (24h / 7d / 30d)
+- Logs em tempo real via SSE streaming
+- Webhooks com proteção SSRF e monitoramento de taxa de entrega
+- Tokens de API com SHA-256 e controle de escopos
+- Contatos e grupos com busca, tags e filtros de status
+
+**Autenticação**
+- Login com rate limiting (5 tentativas por IP a cada 15 min)
+- Redefinição de senha via e-mail com token de 30 minutos
+- Turnstile (Cloudflare) configurável na tela de login
+- Headers de segurança globais (CSP, HSTS, X-Frame-Options…)
 
 ---
 
-## Local Development
+## Primeiro acesso
 
-### Prerequisites
+Na primeira inicialização com o banco vazio, o backend **cria automaticamente** um workspace e um usuário admin temporário, exibindo as credenciais no log do container:
+
+```
+════════════════════════════════════════════════════════
+  PRIMEIRO ACESSO — CREDENCIAIS TEMPORÁRIAS
+════════════════════════════════════════════════════════
+  Email : admin@localhost
+  Senha : Xk7#mP2qTvRn9wBj
+════════════════════════════════════════════════════════
+  Troque a senha imediatamente após o primeiro login.
+  Para personalizar o email: defina ADMIN_EMAIL no .env
+════════════════════════════════════════════════════════
+```
+
+> A senha temporária é exibida **apenas no terminal** — nunca gravada em banco de dados ou logs da aplicação.
+
+Para criar novos workspaces independentes, use o formulário **"Criar workspace"** na tela de login — cada cadastro gera um workspace próprio isolado.
+
+---
+
+## Desenvolvimento local
+
+### Pré-requisitos
 
 - [Bun](https://bun.sh) >= 1.1
-- [Node.js](https://nodejs.org) >= 20
 - [Docker](https://www.docker.com) + Docker Compose
 
-### 1. Database
+### 1. Banco de dados
 
 ```bash
-cd backend
 docker compose up db -d
 ```
 
-The database starts on port `5432` and automatically runs `001_init.sql`, creating tables and demo data. Additional migrations (`002`–`007`) must be applied manually the first time:
+O Postgres inicializa com a migration `001_init.sql`. As migrations seguintes precisam ser aplicadas manualmente na primeira execução:
 
 ```bash
-for f in backend/migrations/00{2..7}*.sql; do
-  docker cp "$f" wppconnect-db-1:/tmp/
-  docker exec wppconnect-db-1 psql -U wppconnect -d wppconnect -f "/tmp/$(basename $f)"
+for f in backend/migrations/00{2..9}*.sql backend/migrations/01*.sql; do
+  docker cp "$f" wppconnect-db:/tmp/
+  docker exec wppconnect-db psql -U wppconnect -d wppconnect -f "/tmp/$(basename $f)"
 done
 ```
-
-**Default account created by the migration:**
-
-| Field    | Value                 |
-|----------|-----------------------|
-| Email    | `admin@wppconnect.io` |
-| Password | `admin123`            |
 
 ### 2. Backend
 
 ```bash
 cd backend
-cp .env.example .env   # adjust variables as needed
+cp .env.example .env   # ajuste as variáveis
 bun install
-bun run dev            # hot-reload at http://localhost:3000
+bun run dev            # hot-reload em http://localhost:3000
 ```
 
-Swagger docs available at `http://localhost:3000/docs`.
+Swagger disponível em `http://localhost:3000/docs`.
 
 ### 3. Frontend
 
@@ -93,121 +120,163 @@ npm install
 npm run dev            # http://localhost:5173
 ```
 
-The Vite proxy forwards `/api/*` → `http://localhost:3000`, so `VITE_API_URL` does not need to be configured.
+O proxy Vite redireciona `/api/*` → `http://localhost:3000` automaticamente.
 
 ---
 
-## Environment Variables
+## Variáveis de ambiente
 
 ### Backend (`backend/.env`)
 
-| Variable               | Description                                               | Default                                                  |
-|------------------------|-----------------------------------------------------------|----------------------------------------------------------|
-| `DATABASE_URL`         | PostgreSQL connection string                              | `postgres://wppconnect:secret@localhost:5432/wppconnect` |
-| `JWT_SECRET`           | Secret used to sign JWT tokens (**change in production**) | `dev-secret-change-in-production`                        |
-| `PORT`                 | Server port                                               | `3000`                                                   |
-| `FRONTEND_URL`         | Allowed CORS origin                                       | `http://localhost:5173`                                  |
-| `NODE_ENV`             | Environment (`development` / `production`)                | —                                                        |
-| `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile secret key (leave empty to disable)  | —                                                        |
+| Variável               | Descrição                                                         | Obrigatório |
+|------------------------|-------------------------------------------------------------------|-------------|
+| `DATABASE_URL`         | String de conexão PostgreSQL                                      | ✓           |
+| `JWT_SECRET`           | Chave para assinar tokens JWT (mínimo 32 caracteres)              | ✓           |
+| `WPP_SECRET_KEY`       | Token secreto do servidor WppConnect                              | ✓           |
+| `PORT`                 | Porta do servidor                                                 | padrão 3000 |
+| `FRONTEND_URL`         | Origem permitida pelo CORS                                        | padrão `http://localhost:5173` |
+| `NODE_ENV`             | `development` ou `production`                                     | —           |
+| `ADMIN_EMAIL`          | E-mail do admin criado no primeiro boot                           | padrão `admin@localhost` |
+| `WPP_SERVER`           | URL base do servidor WppConnect                                   | padrão `http://localhost:21465/api` |
+| `TURNSTILE_SECRET_KEY` | Chave secreta do Cloudflare Turnstile (vazio = desativado)        | —           |
+| `SMTP_HOST`            | Servidor SMTP para envio de e-mails                               | —           |
+| `SMTP_PORT`            | Porta SMTP (587 = STARTTLS, 465 = SSL)                            | padrão 587  |
+| `SMTP_USER`            | Usuário SMTP                                                      | —           |
+| `SMTP_PASS`            | Senha SMTP                                                        | —           |
+| `SMTP_FROM`            | Endereço remetente dos e-mails                                    | —           |
+
+> **Sem SMTP configurado:** o link de redefinição de senha é exibido no log do container (`stdout`), visível via `docker logs wppconnect-api`.
 
 ### Frontend (`frontend/.env`)
 
-| Variable                  | Description                                                        | Default                          |
-|---------------------------|--------------------------------------------------------------------|----------------------------------|
-| `VITE_API_URL`            | API base URL (leave empty — Vite proxy handles it in dev)          | `""`                             |
-| `VITE_WPP_SERVER`         | WppConnect server base URL used for send-message calls             | `http://localhost:21465/api`     |
-| `VITE_TURNSTILE_SITE_KEY` | Cloudflare Turnstile site key (leave empty to disable the widget)  | `""`                             |
+| Variável                  | Descrição                                                     | Padrão                       |
+|---------------------------|---------------------------------------------------------------|------------------------------|
+| `VITE_WPP_SERVER`         | URL do servidor WppConnect para envio de mensagens            | `http://localhost:21465/api` |
+| `VITE_WPP_SOCKET`         | URL WebSocket do servidor WppConnect                          | `http://localhost:21465`     |
+| `VITE_TURNSTILE_SITE_KEY` | Site key do Cloudflare Turnstile (vazio = widget desativado)  | —                            |
+| `VITE_DEMO_MODE`          | Habilita botões SSO simulados na tela de login                | —                            |
 
 ---
 
-## Production with Docker
+## Deploy com Docker
 
-### Full stack (frontend + api + database)
+### Stack completa
 
 ```bash
-# From the project root
+# Na raiz do projeto
 cp backend/.env.example backend/.env
-# Edit backend/.env with a strong JWT_SECRET and DB_PASSWORD
+# Edite backend/.env com JWT_SECRET, DB_PASSWORD e WPP_SECRET_KEY
 
-JWT_SECRET="your-long-secret-key" \
-DB_PASSWORD="strong-password" \
-FRONTEND_URL="https://yourdomain.com" \
 docker compose up -d --build
 ```
 
-The frontend is available on port `80`. Nginx proxies `/api/*` to the backend internally.
+O frontend fica disponível na porta `80`. O Nginx faz proxy de `/api/*` para o backend internamente.
 
-### Backend + database only
+### Containers
+
+| Container            | Função                          |
+|----------------------|---------------------------------|
+| `wppconnect-frontend`| Nginx + React (build estático)  |
+| `wppconnect-api`     | Bun + Elysia (API REST)         |
+| `wppconnect-db`      | PostgreSQL 16                   |
+
+Comandos úteis:
 
 ```bash
-cd backend
-docker compose up -d --build
+# Logs da API em tempo real
+docker logs wppconnect-api -f
+
+# Acessar o banco diretamente
+docker exec -it wppconnect-db psql -U wppconnect -d wppconnect
+
+# Aplicar uma migration manualmente
+docker exec -i wppconnect-db psql -U wppconnect -d wppconnect < backend/migrations/011_password_reset.sql
+
+# Rebuild apenas da API (após mudanças no backend)
+docker compose build api && docker compose up -d api
 ```
 
-### Required variables in production
+### Variáveis obrigatórias em produção
 
-- `JWT_SECRET` — long random string (minimum 32 characters). The root compose will throw an error if not set.
-- `DB_PASSWORD` — PostgreSQL password (`secret` default is for local development only).
+- `JWT_SECRET` — string aleatória longa (mínimo 32 caracteres). O compose lança erro se não estiver definida.
+- `WPP_SECRET_KEY` — token do servidor WppConnect. O compose lança erro se não estiver definida.
+- `DB_PASSWORD` — senha do PostgreSQL (`secret` é apenas para desenvolvimento local).
 
 ---
 
-## Project Structure
+## Migrations
+
+As migrations são aplicadas automaticamente pelo Postgres no **primeiro boot** (volume `pg_data` vazio). Em volumes existentes, aplique manualmente:
+
+| Arquivo                           | Descrição                                            |
+|-----------------------------------|------------------------------------------------------|
+| `001_init.sql`                    | Schema inicial + dados de demonstração               |
+| `002_add_session_token.sql`       | Token WppConnect na tabela sessions                  |
+| `003_add_webhook_proxy.sql`       | Suporte a proxy nos webhooks                         |
+| `004_add_user_id.sql`             | Isolamento de dados por user_id                      |
+| `005_user_preferences_qr_cache.sql` | Preferências de UI e cache do QR code              |
+| `006_groups.sql`                  | Tabela de grupos WhatsApp                            |
+| `007_members.sql`                 | Colunas role e member_status                         |
+| `008_must_change_password.sql`    | Flag de troca obrigatória de senha                   |
+| `009_plan_columns.sql`            | Colunas de plano e billing                           |
+| `010_workspaces.sql`              | Tabela workspaces + migração para workspace_id       |
+| `011_password_reset.sql`          | Colunas reset_token e reset_token_expires            |
+
+---
+
+## Estrutura do projeto
 
 ```
 wppconnect/
-├── docker-compose.yaml          # Full stack (prod)
+├── docker-compose.yaml              # Stack completa (prod)
 ├── .gitignore
 │
 ├── backend/
 │   ├── src/
-│   │   ├── index.ts             # Elysia entrypoint
-│   │   ├── db.ts                # PostgreSQL connection (postgres.js)
+│   │   ├── index.ts                 # Entrypoint Elysia
+│   │   ├── db.ts                    # Conexão PostgreSQL (postgres.js)
 │   │   ├── plugins/
-│   │   │   ├── auth.ts          # JWT middleware via HttpOnly cookie
-│   │   │   ├── security.ts      # Global security headers
-│   │   │   └── rateLimit.ts     # In-memory rate limiter
+│   │   │   ├── auth.ts              # JWT middleware — extrai userId e workspaceId
+│   │   │   ├── security.ts          # Headers de segurança globais
+│   │   │   └── rateLimit.ts         # Rate limiter em memória
+│   │   ├── lib/
+│   │   │   ├── log.ts               # insertLog — grava logs no banco
+│   │   │   ├── mailer.ts            # Envio de e-mail via SMTP (Nodemailer)
+│   │   │   └── setup.ts             # Auto-criação de workspace + admin no primeiro boot
 │   │   └── routes/
-│   │       ├── auth.ts          # Login, logout, register, /me
-│   │       ├── sessions.ts      # WhatsApp session CRUD
-│   │       ├── contacts.ts      # Contact CRUD
-│   │       ├── groups.ts        # Group CRUD
-│   │       ├── webhooks.ts      # Webhook CRUD
-│   │       ├── tokens.ts        # API token CRUD
-│   │       ├── members.ts       # Workspace members & invite
-│   │       ├── plan.ts          # Plan info with real usage counters
-│   │       ├── logs.ts          # Log queries + SSE /stream endpoint
-│   │       └── dashboard.ts     # Aggregated metrics with period filter
-│   ├── migrations/
-│   │   ├── 001_init.sql         # Schema + demo data
-│   │   ├── 002_add_session_token.sql
-│   │   ├── 003_add_webhook_proxy.sql
-│   │   ├── 004_add_user_id.sql
-│   │   ├── 005_user_preferences_qr_cache.sql
-│   │   ├── 006_groups.sql
-│   │   └── 007_members.sql      # role + member_status columns
+│   │       ├── auth.ts              # Login, logout, register, me, forgot/reset password
+│   │       ├── sessions.ts          # CRUD de sessões WhatsApp
+│   │       ├── contacts.ts          # CRUD de contatos
+│   │       ├── groups.ts            # CRUD de grupos
+│   │       ├── webhooks.ts          # CRUD de webhooks (com proteção SSRF)
+│   │       ├── tokens.ts            # CRUD de tokens de API
+│   │       ├── members.ts           # Membros do workspace (convite, papéis, remoção)
+│   │       ├── plan.ts              # Plano e billing do workspace
+│   │       ├── logs.ts              # Consulta de logs + SSE /stream
+│   │       └── dashboard.ts         # Métricas agregadas com filtro de período
+│   ├── migrations/                  # SQLs sequenciais (001–011)
 │   ├── Dockerfile
-│   ├── docker-compose.yaml      # API + database only (dev/isolated)
 │   ├── .env.example
 │   └── package.json
 │
 └── frontend/
     ├── src/
-    │   ├── App.jsx              # Routing, auth, theme
+    │   ├── App.jsx                  # Roteamento, auth, tema claro/escuro
     │   ├── pages/
-    │   │   ├── DashboardPage.jsx   # KPIs, bar chart, period selector, CSV export
-    │   │   ├── ConexoesPage.jsx    # Sessions list, connect panel, config modal
-    │   │   ├── ContatosPage.jsx    # Contacts, tag filter, bulk send modal
-    │   │   ├── GruposPage.jsx      # Groups, tag filter, bulk send modal
-    │   │   ├── WebhooksPage.jsx    # Webhook CRUD
-    │   │   ├── ApiPage.jsx         # Tokens, dynamic base URL
-    │   │   ├── LogsPage.jsx        # Logs with SSE real-time stream
-    │   │   └── ConfigPage.jsx      # Members management + Plan & billing
-    │   ├── components/          # Chrome, Modal, ConnectPanel, Turnstile, Icons…
-    │   └── services/            # api.js, auth.js, sessions.js, contacts.js…
-    ├── nginx.conf               # Nginx config (prod) with CSP + reverse proxy
+    │   │   ├── LoginPage.jsx        # Login, cadastro de workspace, recuperação de senha
+    │   │   ├── DashboardPage.jsx    # KPIs, gráfico de barras, exportação CSV
+    │   │   ├── ConexoesPage.jsx     # Lista de sessões, painel de conexão, QR code
+    │   │   ├── ContatosPage.jsx     # Contatos, tags, envio em massa
+    │   │   ├── GruposPage.jsx       # Grupos, tags, envio em massa
+    │   │   ├── WebhooksPage.jsx     # Webhooks CRUD
+    │   │   ├── ApiPage.jsx          # Tokens de API
+    │   │   ├── LogsPage.jsx         # Logs com streaming SSE em tempo real
+    │   │   └── ConfigPage.jsx       # Workspace, membros, plano e billing
+    │   ├── components/              # Chrome, Modal, ConnectPanel, Turnstile, Icons…
+    │   └── services/                # api.js, auth.js, sessions.js, contacts.js…
+    ├── nginx.conf                   # Config Nginx (prod) com CSP e proxy reverso
     ├── Dockerfile
     ├── vite.config.js
-    ├── .env.example
     └── package.json
 ```
 
@@ -215,59 +284,74 @@ wppconnect/
 
 ## API
 
-Interactive documentation available at `http://localhost:3000/docs` (Swagger UI).
+Documentação interativa disponível em `http://localhost:3000/docs`.
 
-### Main Endpoints
+### Endpoints principais
 
-| Method | Route                   | Description                                   | Auth |
-|--------|-------------------------|-----------------------------------------------|------|
-| POST   | `/api/auth/login`       | Login — sets HttpOnly cookie                  | ✗    |
-| POST   | `/api/auth/register`    | Register a new user                           | ✗    |
-| GET    | `/api/auth/me`          | Authenticated user data                       | ✓    |
-| POST   | `/api/auth/logout`      | Logout — clears cookie                        | ✓    |
-| GET    | `/api/sessions`         | List sessions with filters                    | ✓    |
-| POST   | `/api/sessions`         | Create session                                | ✓    |
-| PUT    | `/api/sessions/:id`     | Update session                                | ✓    |
-| DELETE | `/api/sessions/:id`     | Delete session                                | ✓    |
-| GET    | `/api/contacts`         | List contacts                                 | ✓    |
-| POST   | `/api/contacts`         | Create contact                                | ✓    |
-| PATCH  | `/api/contacts/:id`     | Update contact                                | ✓    |
-| DELETE | `/api/contacts/:id`     | Remove contact                                | ✓    |
-| GET    | `/api/groups`           | List groups                                   | ✓    |
-| POST   | `/api/groups`           | Create group                                  | ✓    |
-| PATCH  | `/api/groups/:id`       | Update group                                  | ✓    |
-| DELETE | `/api/groups/:id`       | Remove group                                  | ✓    |
-| GET    | `/api/webhooks`         | List webhooks                                 | ✓    |
-| POST   | `/api/webhooks`         | Create webhook                                | ✓    |
-| PUT    | `/api/webhooks/:id`     | Update webhook                                | ✓    |
-| DELETE | `/api/webhooks/:id`     | Remove webhook                                | ✓    |
-| GET    | `/api/tokens`           | List API tokens                               | ✓    |
-| POST   | `/api/tokens`           | Generate token (plain shown once)             | ✓    |
-| PATCH  | `/api/tokens/:id`       | Update token name / scopes                    | ✓    |
-| DELETE | `/api/tokens/:id`       | Revoke token                                  | ✓    |
-| GET    | `/api/members`          | List workspace members                        | ✓    |
-| POST   | `/api/members`          | Invite member (returns temp password once)    | ✓    |
-| PATCH  | `/api/members/:id`      | Change member role                            | ✓    |
-| DELETE | `/api/members/:id`      | Remove member                                 | ✓    |
-| GET    | `/api/plan`             | Plan info with real usage counters            | ✓    |
-| GET    | `/api/logs`             | Query logs with filters                       | ✓    |
-| GET    | `/api/logs/stream`      | SSE stream — pushes new logs in real time     | ✓    |
-| GET    | `/api/dashboard`        | Aggregated metrics (`?period=24h\|7d\|30d`)   | ✓    |
-| GET    | `/health`               | Public health check                           | ✗    |
+| Método | Rota                            | Descrição                                         | Auth |
+|--------|---------------------------------|---------------------------------------------------|------|
+| POST   | `/api/auth/login`               | Login — seta cookie HttpOnly                      | ✗    |
+| POST   | `/api/auth/register`            | Cria workspace + usuário admin                    | ✗    |
+| GET    | `/api/auth/me`                  | Dados do usuário e workspace autenticados         | ✓    |
+| PATCH  | `/api/auth/preferences`         | Salva preferências de UI                          | ✓    |
+| POST   | `/api/auth/set-password`        | Define nova senha (primeiro acesso)               | ✓    |
+| POST   | `/api/auth/forgot-password`     | Solicita link de redefinição por e-mail           | ✗    |
+| POST   | `/api/auth/reset-password`      | Redefine senha via token do e-mail                | ✗    |
+| POST   | `/api/auth/logout`              | Logout — remove cookie                            | ✓    |
+| GET    | `/api/sessions`                 | Lista sessões do workspace                        | ✓    |
+| POST   | `/api/sessions`                 | Cria sessão                                       | ✓    |
+| GET    | `/api/sessions/:id`             | Detalhes da sessão (inclui wppToken)              | ✓    |
+| PUT    | `/api/sessions/:id`             | Atualiza sessão                                   | ✓    |
+| DELETE | `/api/sessions/:id`             | Remove sessão                                     | ✓    |
+| GET    | `/api/contacts`                 | Lista contatos do workspace                       | ✓    |
+| POST   | `/api/contacts`                 | Cria contato                                      | ✓    |
+| PUT    | `/api/contacts/:id`             | Atualiza contato                                  | ✓    |
+| DELETE | `/api/contacts/:id`             | Remove contato                                    | ✓    |
+| GET    | `/api/groups`                   | Lista grupos do workspace                         | ✓    |
+| POST   | `/api/groups`                   | Cria grupo                                        | ✓    |
+| PUT    | `/api/groups/:id`               | Atualiza grupo                                    | ✓    |
+| DELETE | `/api/groups/:id`               | Remove grupo                                      | ✓    |
+| GET    | `/api/webhooks`                 | Lista webhooks do workspace                       | ✓    |
+| POST   | `/api/webhooks`                 | Cria webhook (valida SSRF)                        | ✓    |
+| PUT    | `/api/webhooks/:id`             | Atualiza webhook                                  | ✓    |
+| POST   | `/api/webhooks/:id/test`        | Dispara requisição de teste                       | ✓    |
+| DELETE | `/api/webhooks/:id`             | Remove webhook                                    | ✓    |
+| GET    | `/api/tokens`                   | Lista tokens de API do workspace                  | ✓    |
+| POST   | `/api/tokens`                   | Gera token (plain retornado uma única vez)        | ✓    |
+| PUT    | `/api/tokens/:id`               | Atualiza nome / escopos                           | ✓    |
+| DELETE | `/api/tokens/:id`               | Revoga token                                      | ✓    |
+| GET    | `/api/members`                  | Lista membros do workspace (admin)                | ✓    |
+| POST   | `/api/members`                  | Convida membro (admin)                            | ✓    |
+| PATCH  | `/api/members/:id`              | Altera papel do membro (admin)                    | ✓    |
+| DELETE | `/api/members/:id`              | Remove membro (admin)                             | ✓    |
+| GET    | `/api/plan`                     | Plano e uso real do workspace                     | ✓    |
+| POST   | `/api/plan/upgrade`             | Muda plano do workspace                           | ✓    |
+| POST   | `/api/plan/cancel`              | Cancela assinatura do workspace                   | ✓    |
+| GET    | `/api/logs`                     | Consulta logs com filtros                         | ✓    |
+| GET    | `/api/logs/stream`              | SSE — push de novos logs em tempo real            | ✓    |
+| POST   | `/api/logs`                     | Insere entrada de log                             | ✓    |
+| GET    | `/api/dashboard`                | Métricas agregadas (`?period=24h\|7d\|30d`)       | ✓    |
+| GET    | `/health`                       | Health check público                              | ✗    |
 
 ---
 
-## Security
+## Segurança
 
-- **HttpOnly cookie** — JWT never exposed to JavaScript (XSS protection)
-- **Rate limiting** — 5 login attempts per IP every 15 minutes
-- **Security headers** — `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, HSTS (production)
-- **CSP** — strict Content Security Policy via Nginx
-- **CORS** — only the origin configured in `FRONTEND_URL` is allowed
-- **Passwords** — bcrypt via pgcrypto (`gen_salt('bf', 10)`)
-- **Input validation** — all inputs validated by Elysia schema (`t.*`)
-- **SQL injection** — not possible: postgres.js uses tagged templates with native binding
-- **Cloudflare Turnstile** — captcha challenge on the login form (configurable)
+| Mecanismo                  | Detalhe                                                                              |
+|----------------------------|--------------------------------------------------------------------------------------|
+| **HttpOnly cookie**        | JWT nunca exposto ao JavaScript — proteção contra XSS                               |
+| **Rate limiting**          | Login: 5 req/IP a cada 15 min · Registro: 3 req/IP/hora · Forgot: 5 req/IP a cada 15 min |
+| **Security headers**       | `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, HSTS |
+| **CSP**                    | Content Security Policy restrita via Nginx                                           |
+| **CORS**                   | Apenas a origem definida em `FRONTEND_URL` é permitida                               |
+| **Senhas**                 | bcrypt via pgcrypto (`gen_salt('bf', 10)`)                                           |
+| **Validação de entrada**   | Todos os inputs validados pelo schema Elysia (`t.*`)                                 |
+| **SQL injection**          | Impossível: postgres.js usa tagged templates com binding nativo                      |
+| **SSRF**                   | URLs de webhook validadas contra RFC 1918, loopback e link-local                    |
+| **Token de reset**         | 64 hex chars (32 bytes), expira em 30 minutos, invalidado após uso                  |
+| **Enumeração de e-mails**  | Resposta neutra em `/forgot-password` independente do e-mail existir                 |
+| **Turnstile**              | Captcha Cloudflare configurável na tela de login                                     |
+| **Secrets em runtime**     | `JWT_SECRET` e `WPP_SECRET_KEY` sem fallback — processo falha na inicialização se ausentes |
 
 ---
 

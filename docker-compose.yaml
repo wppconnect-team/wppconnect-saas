@@ -21,7 +21,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      DATABASE_URL: postgres://wppconnect:${DB_PASSWORD:-secret}@db:5432/wppconnect
+      DATABASE_URL: postgres://wppconnect:${DB_PASSWORD:?DB_PASSWORD is required}@db:5432/wppconnect
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       PORT: 3000
       NODE_ENV: production
@@ -47,7 +47,7 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: wppconnect
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-secret}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
       POSTGRES_DB: wppconnect
     volumes:
       - pg_data:/var/lib/postgresql/data

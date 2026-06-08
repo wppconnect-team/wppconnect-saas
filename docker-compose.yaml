@@ -1,5 +1,6 @@
 services:
   frontend:
+    container_name: wppconnect-frontend
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -15,6 +16,7 @@ services:
       - wppconnect
 
   api:
+    container_name: wppconnect-api
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -34,6 +36,7 @@ services:
       - wppconnect
 
   db:
+    container_name: wppconnect-db
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: wppconnect

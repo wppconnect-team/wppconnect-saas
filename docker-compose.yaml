@@ -4,9 +4,6 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      args:
-        VITE_WPP_SERVER: ${VITE_WPP_SERVER:-http://192.168.144.1:21465/api}
-        VITE_WPP_SOCKET: ${VITE_WPP_SOCKET:-http://192.168.144.1:21465}
     ports:
       - "80:80"
     depends_on:
@@ -26,8 +23,9 @@ services:
       PORT: 3000
       NODE_ENV: production
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
-      WPP_SERVER: ${WPP_SERVER:-http://192.168.144.1:21465/api}
+      WPP_SERVER: ${WPP_SERVER:-http://runtime:21465/api}
       WPP_SECRET_KEY: ${WPP_SECRET_KEY:?WPP_SECRET_KEY is required}
+      WPP_DEFAULT_PROVIDER: ${WPP_DEFAULT_PROVIDER:-wppconnect}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@localhost}
       TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
       SMTP_HOST: ${SMTP_HOST:-}
@@ -38,6 +36,35 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      runtime:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - wppconnect
+
+  runtime:
+    container_name: wppconnect-runtime
+    image: ${WPP_SERVER_IMAGE:-wppconnect/wppconnect-server:develop}
+    environment:
+      PORT: "21465"
+      HOST: "http://runtime"
+      SECRET_KEY: ${WPP_SECRET_KEY:?WPP_SECRET_KEY is required}
+      TOKEN_STORE_TYPE: ${TOKEN_STORE_TYPE:-file}
+      CUSTOM_USER_DATA_DIR: /usr/src/wpp-server/userDataDir/
+    expose:
+      - "21465"
+    volumes:
+      - wppconnect_tokens:/usr/src/wpp-server/tokens
+      - wppconnect_user_data:/usr/src/wpp-server/userDataDir
+      - wppconnect_uploads:/usr/src/wpp-server/uploads
+      - wppconnect_images:/usr/src/wpp-server/WhatsAppImages
+      - wppconnect_logs:/usr/src/wpp-server/log
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:$${PORT:-21465}/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
     restart: unless-stopped
     networks:
       - wppconnect
@@ -63,6 +90,11 @@ services:
 
 volumes:
   pg_data:
+  wppconnect_tokens:
+  wppconnect_user_data:
+  wppconnect_uploads:
+  wppconnect_images:
+  wppconnect_logs:
 
 networks:
   wppconnect:

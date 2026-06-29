@@ -4,8 +4,6 @@ import { contactsService } from '../services/contacts';
 import { sessionsService } from '../services/sessions';
 import Pagination from '../components/pagination';
 
-const WPP_SERVER = import.meta.env.VITE_WPP_SERVER ?? 'http://localhost:21465/api';
-
 function SendMsgModal({ contacts, onClose, toast }) {
   const [sessions,    setSessions]    = React.useState([]);
   const [sessionId,   setSessionId]   = React.useState('');
@@ -24,14 +22,12 @@ function SendMsgModal({ contacts, onClose, toast }) {
     if (!sessionId || !message.trim()) return;
     setSending(true);
     try {
-      const res = await sessionsService.get(sessionId);
-      const token = res.data?.wppToken ?? sessionId;
       const settled = await Promise.allSettled(
         contacts.map(c =>
-          fetch(`${WPP_SERVER}/${sessionId}/send-message`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ phone: c.phone.replace(/\D/g,''), message: message.trim(), isGroup: false }),
+          sessionsService.sendMessage(sessionId, {
+            phone: c.phone.replace(/\D/g,''),
+            message: message.trim(),
+            isGroup: false,
           })
         )
       );

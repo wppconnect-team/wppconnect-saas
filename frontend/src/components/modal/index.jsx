@@ -7,8 +7,6 @@ export default function NewSessionModal({ onClose, onCreate }) {
   const [phone, setPhone]     = React.useState('');
   const [tag, setTag]         = React.useState('atendimento');
   const [method, setMethod]   = React.useState('qr');
-  const [runtime, setRuntime] = React.useState('wppconnect-server');
-  const [provider, setProvider] = React.useState('wppconnect');
   const [webhook, setWebhook] = React.useState('');
   const [proxyUrl, setProxyUrl]           = React.useState('');
   const [proxyUser, setProxyUser]         = React.useState('');
@@ -31,9 +29,6 @@ export default function NewSessionModal({ onClose, onCreate }) {
         name:    name.trim(),
         phone:   phone || undefined,
         tag,
-        origin: 'wppconnect-cloud',
-        runtime,
-        provider: runtime === 'wppconnect-server-go' ? 'go' : provider,
         webhook: webhook.trim() || undefined,
         proxy,
       });
@@ -86,36 +81,6 @@ export default function NewSessionModal({ onClose, onCreate }) {
               <button type="button" className={method === 'code' ? 'active' : ''} onClick={() => setMethod('code')}>
                 <Ic.KeyRound/> Código
               </button>
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div className="field">
-              <label>Runtime</label>
-              <select
-                value={runtime}
-                onChange={(e) => {
-                  const next = e.target.value;
-                  setRuntime(next);
-                  if (next === 'wppconnect-server-go') setProvider('go');
-                  if (next === 'wppconnect-server' && provider === 'go') setProvider('wppconnect');
-                }}>
-                <option value="wppconnect-server">Node</option>
-                <option value="wppconnect-server-go">Go</option>
-              </select>
-            </div>
-            <div className="field">
-              <label>Provider</label>
-              <select
-                value={runtime === 'wppconnect-server-go' ? 'go' : provider}
-                onChange={(e) => setProvider(e.target.value)}
-                disabled={runtime === 'wppconnect-server-go'}>
-                <option value="wppconnect">WPPConnect</option>
-                <option value="baileys">Baileys</option>
-                <option value="whaileys">Whaileys</option>
-                <option value="zapo">Zapo</option>
-                <option value="go">Go</option>
-              </select>
             </div>
           </div>
 

@@ -4,6 +4,10 @@ RUN npm install -g npm@11
 COPY package*.json ./
 RUN npm ci
 COPY . .
+ARG VITE_WPP_SERVER
+ARG VITE_WPP_SOCKET
+ENV VITE_WPP_SERVER=$VITE_WPP_SERVER
+ENV VITE_WPP_SOCKET=$VITE_WPP_SOCKET
 RUN npm run build
 
 FROM nginx:alpine AS runner

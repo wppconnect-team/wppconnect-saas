@@ -1,6 +1,9 @@
 import React from 'react';
+import { io } from 'socket.io-client';
 import Ic from '../icons';
-import { sessionsService } from '../../services/sessions';
+
+const WPP_SERVER = import.meta.env.VITE_WPP_SERVER ?? 'http://localhost:21465/api';
+const WPP_SOCKET = import.meta.env.VITE_WPP_SOCKET ?? 'http://localhost:21465';
 
 export default function QrCodeModal({ session, initialQr, initialTimer = 60, onClose, onConnected, onAbort, onQr }) {
   const [phase, setPhase]     = React.useState(initialQr ? 'qr' : 'loading');
@@ -8,10 +11,11 @@ export default function QrCodeModal({ session, initialQr, initialTimer = 60, onC
   const [qrImage, setQrImage] = React.useState(initialQr ?? null);
   const [timer, setTimer]     = React.useState(initialQr ? initialTimer : 60);
   const [errorMsg, setErrorMsg] = React.useState('');
+  const socketRef    = React.useRef(null);
   const timerRef     = React.useRef(null);
+  const headersRef   = React.useRef({});
   const requestQrRef = React.useRef(null);
   const phaseRef     = React.useRef(initialQr ? 'qr' : 'loading');
-  const pollRef      = React.useRef(null);
 
   const handleClose = React.useCallback(() => {
     if (phaseRef.current !== 'connected') onAbort?.(session.id);
@@ -36,13 +40,10 @@ export default function QrCodeModal({ session, initialQr, initialTimer = 60, onC
   const requestQr = React.useCallback(async () => {
     setPhase('loading');
     try {
-      const start = await sessionsService.start(session.id, { waitQrCode: false });
-      if (typeof start.qrcode === 'string') {
-        setQrImage(start.qrcode);
-        setPhase('qr');
-        startTimer();
-        onQr?.(session.id, start.qrcode);
-      }
+      await fetch(`${WPP_SERVER}/${session.id}/start-session`, {
+        method: 'POST',
+        headers: { ...headersRef.current, 'Content-Type': 'application/json' },
+      });
     } catch {
       setErrorMsg('Não foi possível conectar ao servidor WppConnect.');
       setPhase('error');
@@ -53,56 +54,59 @@ export default function QrCodeModal({ session, initialQr, initialTimer = 60, onC
   React.useEffect(() => { phaseRef.current = phase; }, [phase]);
 
   React.useEffect(() => {
-    const applyStatus = (data) => {
-      const status = String(data?.status ?? '').toLowerCase();
-      if (['connected', 'inchat', 'islogged', 'authenticated'].includes(status)) {
+    const token = session.wppToken || session.id;
+    headersRef.current = { Authorization: `Bearer ${token}` };
+
+    const socket = io(WPP_SOCKET, { transports: ['websocket', 'polling'] });
+    socketRef.current = socket;
+
+    socket.off('qrCode').on('qrCode', (data) => {
+      if (data.session === session.id) {
+        setQrImage(data.data);
+        setPhase('qr');
+        startTimer();
+        onQr?.(session.id, data.data);
+      }
+    });
+
+    socket.off('session-logged').on('session-logged', (status) => {
+      if (status.session === session.id) {
         clearInterval(timerRef.current);
-        clearInterval(pollRef.current);
         setPhase('connected');
         onConnected?.(session.id);
         setTimeout(onClose, 2000);
       }
-    };
+    });
 
-    const refreshQr = async () => {
+    const init = async () => {
       try {
-        const data = await sessionsService.qrcode(session.id);
-        if (typeof data.qrcode === 'string') {
-          setQrImage(data.qrcode);
-          setPhase('qr');
-          startTimer();
-          onQr?.(session.id, data.qrcode);
+        const res  = await fetch(`${WPP_SERVER}/${session.id}/check-connection-session`, { headers: headersRef.current });
+        const data = await res.json();
+        if (data.status) {
+          clearInterval(timerRef.current);
+          setPhase('connected');
+          onConnected?.(session.id);
+          setTimeout(onClose, 2000);
+        } else {
+          await fetch(`${WPP_SERVER}/${session.id}/start-session`, {
+            method: 'POST',
+            headers: { ...headersRef.current, 'Content-Type': 'application/json' },
+          });
         }
-        applyStatus(data);
       } catch {
-        // O container pode estar iniciando; o polling tenta novamente.
+        setErrorMsg('Não foi possível conectar ao servidor WppConnect. Verifique se ele está em execução.');
+        setPhase('error');
       }
     };
 
     if (initialQr) startTimer(initialTimer); // QR em cache — timer com tempo restante
-    requestQr();
-    pollRef.current = setInterval(async () => {
-      try {
-        const data = await sessionsService.status(session.id);
-        applyStatus(data);
-        if (typeof data.qrcode === 'string') {
-          setQrImage(data.qrcode);
-          setPhase('qr');
-          startTimer();
-          onQr?.(session.id, data.qrcode);
-        } else {
-          await refreshQr();
-        }
-      } catch {
-        // Mantém a tentativa até o usuário fechar o modal.
-      }
-    }, 2000);
+    init();
 
     return () => {
-      clearInterval(pollRef.current);
+      socket.disconnect();
       clearInterval(timerRef.current);
     };
-  }, [initialQr, initialTimer, onClose, onConnected, onQr, requestQr, session.id, startTimer]);
+  }, [session.id]);
 
   const fmt = (s) => `${String(Math.floor(s / 60)).padStart(1, '0')}:${String(s % 60).padStart(2, '0')}`;
 

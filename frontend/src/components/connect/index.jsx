@@ -1,10 +1,6 @@
 import React from 'react';
-import { io } from 'socket.io-client';
 import Ic from '../icons';
 import { sessionsService } from '../../services/sessions';
-
-const WPP_SERVER = import.meta.env.VITE_WPP_SERVER ?? 'http://localhost:21465/api';
-const WPP_SOCKET = import.meta.env.VITE_WPP_SOCKET ?? 'http://localhost:21465';
 
 // Calcula estado inicial do QR a partir dos dados do banco
 function getInitQr(session) {
@@ -35,12 +31,12 @@ export default function ConnectPanel({ session, onClose, onConnected, onAbort })
   /* ── Shared ── */
   const [errorMsg, setErrorMsg]     = React.useState('');
 
-  const socketRef    = React.useRef(null);
   const qrTimerRef   = React.useRef(null);
   const codeTimerRef = React.useRef(null);
-  const tokenRef     = React.useRef(session.wppToken ?? null);
   const phaseRef     = React.useRef(qrPhase);
   const requestQrRef = React.useRef(null);
+  const startPollingRef = React.useRef(null);
+  const pollRef      = React.useRef(null);
 
   React.useEffect(() => { phaseRef.current = qrPhase; }, [qrPhase]);
 
@@ -74,16 +70,18 @@ export default function ConnectPanel({ session, onClose, onConnected, onAbort })
   const requestQr = React.useCallback(async () => {
     setQrPhase('loading');
     try {
-      await fetch(`${WPP_SERVER}/${session.id}/start-session`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${tokenRef.current ?? session.id}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ waitQrCode: false }),
-      });
+      const start = await sessionsService.start(session.id, { waitQrCode: false });
+      if (typeof start.qrcode === 'string') {
+        setQrImage(start.qrcode);
+        setQrPhase('qr');
+        startQrTimer();
+      }
+      startPollingRef.current?.();
     } catch {
       setErrorMsg('Não foi possível iniciar sessão no servidor WppConnect.');
       setQrPhase('error');
     }
-  }, [session.id]);
+  }, [session.id, startQrTimer]);
 
   React.useEffect(() => { requestQrRef.current = requestQr; }, [requestQr]);
 
@@ -100,13 +98,7 @@ export default function ConnectPanel({ session, onClose, onConnected, onAbort })
     setCodeError('');
     setCodePhase('loading');
     try {
-      const res  = await fetch(`${WPP_SERVER}/${session.id}/start-session`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${tokenRef.current ?? session.id}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: cleaned, waitQrCode: true }),
-        signal: AbortSignal.timeout(30_000),
-      });
-      const data = await res.json();
+      const data = await sessionsService.start(session.id, { phone: cleaned, waitQrCode: true });
 
       if (data.status === 'phoneCode' && data.phoneCode) {
         const raw = (data.phoneCode ?? '').replace('-', '');
@@ -115,72 +107,83 @@ export default function ConnectPanel({ session, onClose, onConnected, onAbort })
         startCodeTimer();
       }
     } catch (err) {
-      if (err?.name === 'TimeoutError') {
-        setCodeError('Tempo esgotado. Verifique se o número está correto e tente novamente.');
-      } else {
-        setCodeError('Não foi possível solicitar o código. Verifique o servidor WppConnect.');
-      }
+      setCodeError('Não foi possível solicitar o código. Verifique o servidor WppConnect.');
       setCodePhase('idle');
     }
   };
 
-  /* ── Socket + init ── */
+  const applyStatus = React.useCallback((data) => {
+    const status = String(data?.status ?? '').toLowerCase();
+    if (['connected', 'inchat', 'islogged', 'authenticated'].includes(status)) {
+      clearInterval(qrTimerRef.current);
+      clearInterval(codeTimerRef.current);
+      clearInterval(pollRef.current);
+      setQrPhase('connected');
+      setCodePhase('connected');
+      onConnected?.(session.id);
+    }
+  }, [onConnected, session.id]);
+
+  const refreshQr = React.useCallback(async () => {
+    try {
+      const data = await sessionsService.qrcode(session.id);
+      if (typeof data.qrcode === 'string') {
+        setQrImage(data.qrcode);
+        setQrPhase('qr');
+        startQrTimer();
+        await sessionsService.update(session.id, {
+          status: 'qr',
+          qr_image: data.qrcode,
+          qr_expires_at: new Date(Date.now() + 60_000).toISOString(),
+        }).catch(() => {});
+      }
+      applyStatus(data);
+    } catch {
+      // A sessão pode ainda estar inicializando; o polling de status continua.
+    }
+  }, [applyStatus, session.id, startQrTimer]);
+
+  const startPolling = React.useCallback(() => {
+    clearInterval(pollRef.current);
+    let qrAttempts = 0;
+    pollRef.current = setInterval(async () => {
+      try {
+        const data = await sessionsService.status(session.id);
+        applyStatus(data);
+        const status = String(data?.status ?? '').toLowerCase();
+        if (typeof data?.qrcode === 'string') {
+          setQrImage(data.qrcode);
+          setQrPhase('qr');
+          startQrTimer();
+        } else if (status !== 'connected' && qrAttempts < 30) {
+          qrAttempts += 1;
+          await refreshQr();
+        }
+      } catch {
+        // Mantém o polling; falhas curtas podem ocorrer enquanto o container sobe.
+      }
+    }, 2000);
+  }, [applyStatus, refreshQr, session.id, startQrTimer]);
+
+  React.useEffect(() => { startPollingRef.current = startPolling; }, [startPolling]);
+
+  /* ── Status polling + init ── */
   React.useEffect(() => {
     if (session.status === 'connected') return;
 
     const init = async () => {
-      if (!tokenRef.current) {
-        try {
-          const res = await sessionsService.get(session.id);
-          tokenRef.current = res.data?.wppToken ?? null;
-        } catch { /* continua sem token */ }
-      }
-
-      const socket = io(WPP_SOCKET, { transports: ['websocket', 'polling'] });
-      socketRef.current = socket;
-
-      /* QR Code — persiste no banco para sobreviver a fechar/reabrir e F5 */
-      socket.on('qrCode', (data) => {
-        if (data.session !== session.id) return;
-        setQrImage(data.data);
-        setQrPhase('qr');
-        startQrTimer();
-        const expiresAt = new Date(Date.now() + 60_000).toISOString();
-        sessionsService.update(session.id, {
-          status: 'qr',
-          qr_image: data.data,
-          qr_expires_at: expiresAt,
-        }).catch(() => {});
-      });
-
-      /* Pairing Code */
-      socket.on('phoneCode', (data) => {
-        if (data.session !== session.id) return;
-        const raw = (data.data ?? data.phoneCode ?? '').replace('-', '');
-        setPairCode(raw.toUpperCase());
-        setCodePhase('code');
-        startCodeTimer();
-      });
-
-      /* Sessão conectada */
-      socket.on('session-logged', (status) => {
-        if (status.session !== session.id) return;
-        clearInterval(qrTimerRef.current);
-        clearInterval(codeTimerRef.current);
-        setQrPhase('connected');
-        setCodePhase('connected');
-        onConnected?.(session.id);
-      });
+      await refreshQr();
+      startPolling();
     };
 
     init();
 
     return () => {
-      socketRef.current?.disconnect();
+      clearInterval(pollRef.current);
       clearInterval(qrTimerRef.current);
       clearInterval(codeTimerRef.current);
     };
-  }, [session.id]);
+  }, [refreshQr, session.id, session.status, startPolling]);
 
   const handleClose = () => {
     // Não chama onAbort automaticamente — o usuário está apenas fechando o painel,

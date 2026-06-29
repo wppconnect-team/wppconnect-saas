@@ -5,7 +5,6 @@ import { sessionsService } from '../services/sessions';
 import Pagination from '../components/pagination';
 
 const PAGE_SIZE = 15;
-const WPP_SERVER = import.meta.env.VITE_WPP_SERVER ?? 'http://localhost:21465/api';
 
 const MAX_CHARS = 1000;
 
@@ -54,14 +53,12 @@ function SendMsgModal({ groups, onClose, toast }) {
     if (!sessionId || !message.trim()) return;
     setSending(true);
     try {
-      const res   = await sessionsService.get(sessionId);
-      const token = res.data?.wppToken ?? sessionId;
       const settled = await Promise.allSettled(
         groups.map(g =>
-          fetch(`${WPP_SERVER}/${sessionId}/send-message`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ phone: g.phone ?? g.id, message: message.trim(), isGroup: true }),
+          sessionsService.sendMessage(sessionId, {
+            phone: g.phone ?? g.id,
+            message: message.trim(),
+            isGroup: true,
           })
         )
       );

@@ -7,6 +7,7 @@ export default function NewSessionModal({ onClose, onCreate }) {
   const [phone, setPhone]     = React.useState('');
   const [tag, setTag]         = React.useState('atendimento');
   const [method, setMethod]   = React.useState('qr');
+  const [provider, setProvider] = React.useState('wppconnect');
   const [webhook, setWebhook] = React.useState('');
   const [proxyUrl, setProxyUrl]           = React.useState('');
   const [proxyUser, setProxyUser]         = React.useState('');
@@ -29,6 +30,7 @@ export default function NewSessionModal({ onClose, onCreate }) {
         name:    name.trim(),
         phone:   phone || undefined,
         tag,
+        provider,
         webhook: webhook.trim() || undefined,
         proxy,
       });
@@ -82,6 +84,17 @@ export default function NewSessionModal({ onClose, onCreate }) {
                 <Ic.KeyRound/> Código
               </button>
             </div>
+          </div>
+
+          <div className="field">
+            <label>Provider</label>
+            <select value={provider} onChange={(e) => setProvider(e.target.value)}>
+              <option value="wppconnect">WPPConnect</option>
+              <option value="baileys">Baileys</option>
+              <option value="whaileys">Whaileys</option>
+              <option value="zapo">Zapo</option>
+            </select>
+            <div className="hint">Todas as sessões rodam na mesma instância interna do runtime.</div>
           </div>
 
           {/* Webhook */}

@@ -214,8 +214,9 @@ configure_credentials() {
   ok "DB_PASSWORD configurado."
 
   # ── WppConnect ──
-  WPP_SERVER=$(prompt "URL do servidor WppConnect" "http://localhost:21465/api")
-  WPP_SOCKET=$(echo "$WPP_SERVER" | sed 's|/api$||')
+  WPP_SERVER_IMAGE=$(prompt "Imagem do runtime WppConnect" "wppconnect/wppconnect-server:develop")
+  WPP_SERVER=$(prompt "URL interna do runtime WppConnect" "http://runtime:21465/api")
+  WPP_DEFAULT_PROVIDER=$(prompt "Provider padrão para novas sessões" "wppconnect")
 
   echo ""
   info "Token secreto do servidor WppConnect (Enter = gerar aleatório):"
@@ -249,13 +250,11 @@ write_env_file() {
 JWT_SECRET=${JWT_SECRET}
 DB_PASSWORD=${DB_PASSWORD}
 WPP_SECRET_KEY=${WPP_SECRET_KEY}
+WPP_SERVER_IMAGE=${WPP_SERVER_IMAGE}
 WPP_SERVER=${WPP_SERVER}
+WPP_DEFAULT_PROVIDER=${WPP_DEFAULT_PROVIDER}
 FRONTEND_URL=${FRONTEND_URL}
 ADMIN_EMAIL=${ADMIN_EMAIL}
-
-# WppConnect (build args do frontend)
-VITE_WPP_SERVER=${WPP_SERVER}
-VITE_WPP_SOCKET=${WPP_SOCKET}
 
 # SMTP (deixe vazio para exibir o link de reset no log do container)
 SMTP_HOST=${SMTP_HOST}

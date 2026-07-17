@@ -132,12 +132,14 @@ O proxy Vite redireciona `/api/*` → `http://localhost:3000` automaticamente.
 |------------------------|-------------------------------------------------------------------|-------------|
 | `DATABASE_URL`         | String de conexão PostgreSQL                                      | ✓           |
 | `JWT_SECRET`           | Chave para assinar tokens JWT (mínimo 32 caracteres)              | ✓           |
-| `WPP_SECRET_KEY`       | Token secreto do servidor WppConnect                              | ✓           |
+| `WPP_SECRET_KEY`       | Token secreto do runtime interno WppConnect                       | ✓           |
 | `PORT`                 | Porta do servidor                                                 | padrão 3000 |
 | `FRONTEND_URL`         | Origem permitida pelo CORS                                        | padrão `http://localhost:5173` |
 | `NODE_ENV`             | `development` ou `production`                                     | —           |
 | `ADMIN_EMAIL`          | E-mail do admin criado no primeiro boot                           | padrão `admin@localhost` |
-| `WPP_SERVER`           | URL base do servidor WppConnect                                   | padrão `http://localhost:21465/api` |
+| `WPP_SERVER`           | URL interna do runtime multi-sessão                               | padrão `http://runtime:21465/api` |
+| `WPP_SERVER_IMAGE`     | Imagem Docker do runtime                                          | padrão `wppconnect/wppconnect-server:develop` |
+| `WPP_DEFAULT_PROVIDER` | Provider padrão para novas sessões                                | padrão `wppconnect` |
 | `TURNSTILE_SECRET_KEY` | Chave secreta do Cloudflare Turnstile (vazio = desativado)        | —           |
 | `SMTP_HOST`            | Servidor SMTP para envio de e-mails                               | —           |
 | `SMTP_PORT`            | Porta SMTP (587 = STARTTLS, 465 = SSL)                            | padrão 587  |
@@ -151,8 +153,6 @@ O proxy Vite redireciona `/api/*` → `http://localhost:3000` automaticamente.
 
 | Variável                  | Descrição                                                     | Padrão                       |
 |---------------------------|---------------------------------------------------------------|------------------------------|
-| `VITE_WPP_SERVER`         | URL do servidor WppConnect para envio de mensagens            | `http://localhost:21465/api` |
-| `VITE_WPP_SOCKET`         | URL WebSocket do servidor WppConnect                          | `http://localhost:21465`     |
 | `VITE_TURNSTILE_SITE_KEY` | Site key do Cloudflare Turnstile (vazio = widget desativado)  | —                            |
 | `VITE_DEMO_MODE`          | Habilita botões SSO simulados na tela de login                | —                            |
 
@@ -178,6 +178,7 @@ O frontend fica disponível na porta `80`. O Nginx faz proxy de `/api/*` para o 
 |----------------------|---------------------------------|
 | `wppconnect-frontend`| Nginx + React (build estático)  |
 | `wppconnect-api`     | Bun + Elysia (API REST)         |
+| `wppconnect-runtime` | WPPConnect Server multi-sessão  |
 | `wppconnect-db`      | PostgreSQL 16                   |
 
 Comandos úteis:

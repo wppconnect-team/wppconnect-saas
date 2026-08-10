@@ -1,4 +1,5 @@
 import { Elysia, t } from 'elysia';
+import { randomInt } from 'crypto';
 import { authPlugin } from '../plugins/auth';
 import { sql } from '../db';
 
@@ -52,7 +53,7 @@ export const memberRoutes = new Elysia({ prefix: '/api/members' })
 
       const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
       const tempPassword = Array.from({ length: 12 }, () =>
-        chars[Math.floor(Math.random() * chars.length)]
+        chars[randomInt(chars.length)]
       ).join('');
 
       const [member] = await sql<{ id: string; name: string; email: string; role: string }[]>`

@@ -1,4 +1,5 @@
 import { Elysia, t } from 'elysia';
+import { randomBytes } from 'crypto';
 import { authPlugin } from '../plugins/auth';
 import { sql } from '../db';
 import { insertLog } from '../lib/log';
@@ -72,7 +73,7 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
   .post('/',
     async ({ body, set, userId, workspaceId }) => {
       const { id, name, phone, tag, webhook, proxy } = body;
-      const sessionId = id ?? 'wa_' + Math.random().toString(36).slice(2, 6);
+      const sessionId = id ?? `wa_${randomBytes(6).toString('hex')}`;
 
       let wppToken = '';
       try {

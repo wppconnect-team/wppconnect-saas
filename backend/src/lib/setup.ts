@@ -1,5 +1,5 @@
 import { sql } from '../db';
-import { randomBytes } from 'crypto';
+import { randomInt } from 'crypto';
 
 function generateTempPassword(): string {
   const upper   = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -8,21 +8,19 @@ function generateTempPassword(): string {
   const special = '!@#$';
   const all     = upper + lower + digits + special;
 
-  const bytes = randomBytes(20);
   const chars: string[] = [];
 
-  chars.push(upper[bytes[0]   % upper.length]);
-  chars.push(lower[bytes[1]   % lower.length]);
-  chars.push(digits[bytes[2]  % digits.length]);
-  chars.push(special[bytes[3] % special.length]);
+  chars.push(upper[randomInt(upper.length)]!);
+  chars.push(lower[randomInt(lower.length)]!);
+  chars.push(digits[randomInt(digits.length)]!);
+  chars.push(special[randomInt(special.length)]!);
 
   for (let i = 4; i < 20; i++) {
-    chars.push(all[bytes[i] % all.length]);
+    chars.push(all[randomInt(all.length)]!);
   }
 
-  const shuffle = randomBytes(20);
   for (let i = chars.length - 1; i > 0; i--) {
-    const j = shuffle[i] % (i + 1);
+    const j = randomInt(i + 1);
     [chars[i], chars[j]] = [chars[j]!, chars[i]!];
   }
 

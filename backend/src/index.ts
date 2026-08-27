@@ -19,7 +19,7 @@ const PORT = Number(process.env.PORT ?? 3000);
 
 const origins = (process.env.FRONTEND_URL ?? 'http://localhost:5173').split(',');
 
-const app = new Elysia()
+new Elysia()
   .use(securityPlugin)
   .use(swagger({
     path: '/docs',

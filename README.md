@@ -86,6 +86,23 @@ indisponíveis são ocultados, nunca excluídos. O resultado fica disponível em
 `GET /api/catalog/runs/{id}` e, opcionalmente, em webhook HMAC idempotente. Em
 Vercel, o cron interno drena a fila; em Docker, o worker faz isso continuamente.
 
+## Manifesto remoto de compatibilidade
+
+O substituto seguro para hotfix por CDN é um manifesto declarativo assinado com
+Ed25519. Ele informa versão do WhatsApp, versão mínima e recomendada do pacote,
+estado de capacidades, flags estritamente booleanas e um link HTTPS de
+workaround. Não contém, baixa nem executa JavaScript remoto.
+
+- `PUT /api/internal/compatibility/manifests/{package}` publica uma nova revisão
+  com credencial operacional e validade máxima de sete dias;
+- `GET /api/v1/compatibility/manifests/{package}/latest` entrega payload e token
+  assinado;
+- `GET /api/v1/compatibility/keys/{keyId}` entrega a chave Ed25519 necessária
+  para verificação, inclusive após rotação.
+
+Consumidores devem verificar o token, expiração e nome do pacote antes de usar
+as flags. Texto e URLs são somente informativos e nunca devem ser executados.
+
 ## Stack
 
 | Camada   | Tecnologia                            |
@@ -299,6 +316,7 @@ As migrations são aplicadas automaticamente pelo Postgres no **primeiro boot** 
 | `010_workspaces.sql`              | Tabela workspaces + migração para workspace_id       |
 | `011_password_reset.sql`          | Colunas reset_token e reset_token_expires            |
 | `013_compatibility_monitor.sql`   | Incidentes, sinais e outbox de webhooks assinados    |
+| `021_compatibility_manifests.sql` | Manifestos declarativos e chaves Ed25519              |
 
 ---
 
@@ -425,6 +443,9 @@ VALUES ('<workspace-id>', 'compatibility-monitor', 'signed-webhooks');
 | DELETE | `/api/compatibility/webhooks/:id` | Desativa endpoint                                  | ✓    |
 | GET    | `/api/compatibility/webhooks/:id/deliveries` | Histórico de entregas                  | ✓    |
 | POST   | `/api/compatibility/deliveries/:id/replay` | Reagenda entrega finalizada              | ✓    |
+| PUT    | `/api/internal/compatibility/manifests/:package` | Publica manifesto declarativo assinado | segredo |
+| GET    | `/api/v1/compatibility/manifests/:package/latest` | Lê o manifesto ativo                 | ✗    |
+| GET    | `/api/v1/compatibility/keys/:keyId` | Lê chave pública Ed25519                          | ✗    |
 | GET    | `/health`                       | Health check público                              | ✗    |
 
 ---

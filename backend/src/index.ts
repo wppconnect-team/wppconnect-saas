@@ -27,6 +27,7 @@ import { licensingRoutes, publicLicensingRoutes } from './routes/licensing';
 import { internalTelemetryRoutes, telemetryIngestRoutes, telemetryRoutes } from './routes/telemetry';
 import { catalogSyncRoutes, internalCatalogSyncRoutes, publicShopifyOAuthRoutes } from './routes/catalogSync';
 import { startCatalogSyncWorker } from './workers/catalogSyncWorker';
+import { compatibilityManifestRoutes, internalCompatibilityManifestRoutes } from './routes/compatibilityManifest';
 
 const PORT = Number(process.env.PORT ?? 3000);
 
@@ -98,6 +99,8 @@ const app = new Elysia()
   .use(catalogSyncRoutes)
   .use(publicShopifyOAuthRoutes)
   .use(internalCatalogSyncRoutes)
+  .use(compatibilityManifestRoutes)
+  .use(internalCompatibilityManifestRoutes)
 
   // Erro global
   .onError(({ code, error, set }) => {

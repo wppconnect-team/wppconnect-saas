@@ -5,8 +5,34 @@
   "type": "module",
   "main": "src/index.js",
   "types": "src/index.d.ts",
-  "exports": { ".": { "types": "./src/index.d.ts", "import": "./src/index.js" } },
-  "files": ["src"],
-  "scripts": { "test": "node --test" },
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "import": "./src/index.js"
+    }
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wppconnect-team/wppconnect-saas.git",
+    "directory": "packages/telemetry-sdk"
+  },
+  "homepage": "https://github.com/wppconnect-team/wppconnect-saas/tree/main/packages/telemetry-sdk",
+  "bugs": "https://github.com/wppconnect-team/wppconnect-saas/issues",
+  "keywords": [
+    "wppconnect",
+    "telemetry",
+    "privacy",
+    "observability"
+  ],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "license": "MIT"
 }

@@ -12,3 +12,9 @@ Asynchronous conversion and transcription service for WhatsApp audio. Uploads an
 Creation requires `Idempotency-Key` and an API key with `media:write`; polling requires `media:read`. A conversion always emits mono 48 kHz OGG/Opus using FFmpeg's VoIP profile and validates the result with ffprobe. Transcription uses an OpenAI-compatible `/audio/transcriptions` provider configured through environment variables.
 
 Webhook consumers must verify `X-WPPConnect-Signature` over `<timestamp>.<raw-body>`, deduplicate with `Idempotency-Key`, and reject stale timestamps. Files are removed after `MEDIA_RETENTION_HOURS`.
+
+The continuously validated production image is published as
+`ghcr.io/wppconnect-team/wppconnect-media-api:latest`. Every build also receives
+an immutable `sha-<commit>` tag and OCI provenance/SBOM attestations. Deployment
+still requires PostgreSQL, persistent `/data` storage, HTTPS, and the secrets
+listed in `.env.example`.

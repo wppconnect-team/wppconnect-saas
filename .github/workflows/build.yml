@@ -58,6 +58,7 @@ jobs:
           SELECT 1 / CASE WHEN to_regclass('public.auth_sessions') IS NOT NULL THEN 1 ELSE 0 END;
           SELECT 1 / CASE WHEN to_regclass('public.usage_events') IS NOT NULL THEN 1 ELSE 0 END;
           SELECT 1 / CASE WHEN to_regclass('public.extension_licenses') IS NOT NULL THEN 1 ELSE 0 END;
+          SELECT 1 / CASE WHEN to_regclass('public.media_jobs') IS NOT NULL THEN 1 ELSE 0 END;
           SQL
 
       - name: Exercise migration from the legacy Cloud schema
@@ -121,3 +122,23 @@ jobs:
         with:
           node-version: '24'
       - run: npm test
+
+  media-api:
+    name: Media API tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/media-api
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 'latest'
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun test
+      - name: Build production image
+        working-directory: .
+        run: docker build -t wppconnect-media-api ./services/media-api

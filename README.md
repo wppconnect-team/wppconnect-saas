@@ -31,6 +31,24 @@ As migrations são aplicadas pelo backend antes de aceitar tráfego. O checksum
 de uma migration já executada não pode mudar; correções posteriores devem ser
 criadas em um novo arquivo versionado.
 
+## Media API
+
+O microserviço em `services/media-api` reúne conversão e transcrição assíncronas.
+Ele aceita upload ou URL HTTPS temporária, cifra arquivos em repouso, converte
+áudio para OGG/Opus/PTT com FFmpeg, valida a saída com ffprobe, mede segundos de
+uso e entrega resultado por polling e webhook HMAC idempotente. Consulte o
+README do serviço para o contrato HTTP e as variáveis de ambiente.
+
+Para executá-lo com a stack local, configure as três chaves `MEDIA_*` descritas
+em `services/media-api/.env.example` e use:
+
+```bash
+docker compose --profile media up -d --build
+```
+
+O perfil é opt-in para não obrigar instalações existentes a provisionar
+armazenamento e segredos de mídia.
+
 ## Stack
 
 | Camada   | Tecnologia                            |
@@ -200,6 +218,7 @@ O frontend fica disponível na porta `80`. O Nginx faz proxy de `/api/*` para o 
 | `wppconnect-frontend`| Nginx + React (build estático)  |
 | `wppconnect-api`     | Bun + Elysia (API REST)         |
 | `wppconnect-db`      | PostgreSQL 16                   |
+| `wppconnect-media-api` | Conversão e transcrição assíncronas (perfil `media`) |
 
 Comandos úteis:
 

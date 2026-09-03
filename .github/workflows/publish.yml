@@ -9,6 +9,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_FRONTEND: ghcr.io/${{ github.repository }}/frontend
   IMAGE_BACKEND: ghcr.io/${{ github.repository }}/backend
+  IMAGE_MEDIA: ghcr.io/${{ github.repository }}/media-api
 
 jobs:
   publish:
@@ -63,3 +64,21 @@ jobs:
           push: true
           tags: ${{ steps.meta-backend.outputs.tags }}
           labels: ${{ steps.meta-backend.outputs.labels }}
+
+      - name: Extract Docker metadata (media API)
+        id: meta-media
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE_MEDIA }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      - name: Build and push media API image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./services/media-api
+          push: true
+          tags: ${{ steps.meta-media.outputs.tags }}
+          labels: ${{ steps.meta-media.outputs.labels }}

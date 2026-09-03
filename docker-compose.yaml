@@ -45,6 +45,32 @@ services:
     networks:
       - wppconnect
 
+  media-api:
+    container_name: wppconnect-media-api
+    profiles: ["media"]
+    build:
+      context: ./services/media-api
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgres://wppconnect:${DB_PASSWORD:?DB_PASSWORD is required}@db:5432/wppconnect
+      MEDIA_STORAGE_KEY: ${MEDIA_STORAGE_KEY:?MEDIA_STORAGE_KEY is required}
+      MEDIA_RESULT_SIGNING_SECRET: ${MEDIA_RESULT_SIGNING_SECRET:?MEDIA_RESULT_SIGNING_SECRET is required}
+      MEDIA_WEBHOOK_SIGNING_SECRET: ${MEDIA_WEBHOOK_SIGNING_SECRET:?MEDIA_WEBHOOK_SIGNING_SECRET is required}
+      MEDIA_PUBLIC_URL: ${MEDIA_PUBLIC_URL:-http://localhost:3100}
+      TRANSCRIPTION_BASE_URL: ${TRANSCRIPTION_BASE_URL:-https://api.openai.com/v1}
+      TRANSCRIPTION_API_KEY: ${TRANSCRIPTION_API_KEY:-}
+      TRANSCRIPTION_MODEL: ${TRANSCRIPTION_MODEL:-whisper-1}
+    ports:
+      - "3100:3100"
+    volumes:
+      - media_data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - wppconnect
+
   db:
     container_name: wppconnect-db
     image: postgres:16-alpine
@@ -66,6 +92,7 @@ services:
 
 volumes:
   pg_data:
+  media_data:
 
 networks:
   wppconnect:

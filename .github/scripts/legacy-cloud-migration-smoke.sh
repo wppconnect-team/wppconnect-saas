@@ -75,4 +75,17 @@ SELECT 1 / CASE WHEN COUNT(*) = 2 THEN 1 ELSE 0 END
   FROM api_keys WHERE api_key LIKE 'migrated_%' AND is_active = FALSE;
 SELECT 1 / CASE WHEN COUNT(*) = 2 THEN 1 ELSE 0 END
   FROM users WHERE crypt('known-password', password_hash) = password_hash;
+
+INSERT INTO workspaces (id, name, slug)
+VALUES ('40000000-0000-0000-0000-000000000001', 'Post Migration', 'post-migration');
+INSERT INTO users (id, name, email, password_hash, workspace_id)
+VALUES (
+  '50000000-0000-0000-0000-000000000001', 'New User', 'new-user@example.test',
+  crypt('new-password', gen_salt('bf')), '40000000-0000-0000-0000-000000000001'
+);
+SELECT 1 / CASE WHEN COUNT(*) = 1 THEN 1 ELSE 0 END
+  FROM users
+  WHERE email = 'new-user@example.test'
+    AND password IS NULL
+    AND crypt('new-password', password_hash) = password_hash;
 SQL

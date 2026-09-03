@@ -1,6 +1,7 @@
 import { Elysia, t } from 'elysia';
 import { jwt } from '@elysiajs/jwt';
 import { randomBytes } from 'crypto';
+import type postgres from 'postgres';
 import { sql } from '../db';
 import { checkRateLimit } from '../plugins/rateLimit';
 import { sendPasswordResetEmail } from '../lib/mailer';
@@ -70,11 +71,12 @@ async function issueSession(
   auth: { set(options: Record<string, unknown>): void },
   refresh: { set(options: Record<string, unknown>): void },
   user: SessionUser,
-  request: Request
+  request: Request,
+  db: postgres.Sql = sql
 ): Promise<void> {
   const material = createSessionMaterial();
   const ip = clientIpFromHeaders(request.headers);
-  await sql`
+  await db`
     INSERT INTO auth_sessions (
       id, user_id, workspace_id, refresh_token_hash, current_jti,
       user_agent, ip_address, expires_at
@@ -224,51 +226,66 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
 
       const { workspaceName, name, email, password } = body;
 
-      const [existing] = await sql`SELECT id FROM users WHERE email = ${email} LIMIT 1`;
-      if (existing) {
+      const registration = await sql.begin(async (transaction) => {
+        const tx = transaction as unknown as postgres.Sql;
+        await tx`SELECT pg_advisory_xact_lock(hashtext(lower(${email})))`;
+
+        const [existing] = await tx`SELECT id FROM users WHERE email = ${email} LIMIT 1`;
+        if (existing) return null;
+
+        const base = makeSlug(workspaceName);
+        let slug = base;
+        let tries = 0;
+        let workspace: { id: string } | undefined;
+        while (!workspace) {
+          [workspace] = await tx<{ id: string }[]>`
+            INSERT INTO workspaces (name, slug)
+            VALUES (${workspaceName}, ${slug})
+            ON CONFLICT (slug) DO NOTHING
+            RETURNING id
+          `;
+          if (!workspace) slug = `${base}-${++tries}`;
+        }
+
+        const [user] = await tx<{ id: string; name: string; email: string }[]>`
+          INSERT INTO users (name, email, password_hash, workspace_id, role, must_change_password)
+          VALUES (
+            ${name},
+            ${email},
+            crypt(${password}, gen_salt('bf', 10)),
+            ${workspace.id},
+            'admin',
+            FALSE
+          )
+          RETURNING id, name, email
+        `;
+
+        await issueSession(jwt, auth, refresh, {
+          id: user.id,
+          email: user.email,
+          workspaceId: workspace.id,
+        }, request, tx);
+
+        return { user, workspace, slug };
+      });
+
+      if (!registration) {
         set.status = 409;
         return { error: 'E-mail já cadastrado' };
       }
 
-      // Gera slug único para o workspace
-      const base = makeSlug(workspaceName);
-      let slug = base;
-      let tries = 0;
-      while (true) {
-        const [taken] = await sql`SELECT id FROM workspaces WHERE slug = ${slug}`;
-        if (!taken) break;
-        slug = `${base}-${++tries}`;
-      }
-
-      const [workspace] = await sql<{ id: string }[]>`
-        INSERT INTO workspaces (name, slug)
-        VALUES (${workspaceName}, ${slug})
-        RETURNING id
-      `;
-
-      const [user] = await sql<{ id: string; name: string; email: string }[]>`
-        INSERT INTO users (name, email, password_hash, workspace_id, role, must_change_password)
-        VALUES (
-          ${name},
-          ${email},
-          crypt(${password}, gen_salt('bf', 10)),
-          ${workspace.id},
-          'admin',
-          FALSE
-        )
-        RETURNING id, name, email
-      `;
-
-      await issueSession(jwt, auth, refresh, {
-        id: user.id,
-        email: user.email,
-        workspaceId: workspace.id,
-      }, request);
-
       set.status = 201;
       return {
-        user:               { id: user.id, name: user.name, email: user.email },
-        workspace:          { id: workspace.id, name: workspaceName, slug },
+        user:               {
+          id: registration.user.id,
+          name: registration.user.name,
+          email: registration.user.email,
+        },
+        workspace:          {
+          id: registration.workspace.id,
+          name: workspaceName,
+          slug: registration.slug,
+        },
         mustChangePassword: false,
         expiresIn:          ACCESS_SESSION_SECONDS,
       };

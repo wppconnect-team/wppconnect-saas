@@ -126,13 +126,22 @@ curl --fail --silent --show-error \
 manifest_unauthorized="$(curl --silent --output /dev/null --write-out '%{http_code}' --request PUT \
   --header 'content-type: application/json' --data "${manifest_body}" \
   http://127.0.0.1:3000/api/internal/compatibility/manifests/%40wppconnect%2Fwa-js)"
-test "${manifest_unauthorized}" = "401"
+if [[ "${manifest_unauthorized}" != "401" ]]; then
+  echo "Expected unsigned manifest publish to return 401, got ${manifest_unauthorized}" >&2
+  exit 1
+fi
 manifest_code_field_status="$(curl --silent --output /dev/null --write-out '%{http_code}' --request PUT \
   --header "authorization: Bearer ${COMPATIBILITY_MANIFEST_ADMIN_SECRET}" \
   --header 'content-type: application/json' \
   --data '{"whatsappVersion":"2.3000.1","minimumPackageVersion":"3.20.0","recommendedPackageVersion":"3.21.0","capabilities":{},"featureFlags":{},"expiresInSeconds":3600,"remoteJavaScript":"alert(1)"}' \
   http://127.0.0.1:3000/api/internal/compatibility/manifests/%40wppconnect%2Fwa-js)"
-test "${manifest_code_field_status}" = "400"
+if [[ "${manifest_code_field_status}" != "400" && "${manifest_code_field_status}" != "422" ]]; then
+  echo "Expected executable manifest field to be rejected with 400/422, got ${manifest_code_field_status}" >&2
+  exit 1
+fi
+psql --set ON_ERROR_STOP=1 --host 127.0.0.1 --username wppconnect --dbname wppconnect \
+  --tuples-only --no-align --command "SELECT COUNT(*) FROM compatibility_manifests WHERE package_name='@wppconnect/wa-js'" \
+  | grep -qx '1'
 
 retention_unauthorized="$(curl --silent --output /dev/null --write-out '%{http_code}' \
   http://127.0.0.1:3000/api/internal/telemetry/retention)"

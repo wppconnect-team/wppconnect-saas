@@ -11,7 +11,28 @@
       "import": "./src/index.js"
     }
   },
-  "files": ["src"],
-  "scripts": { "test": "node --test" },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wppconnect-team/wppconnect-saas.git",
+    "directory": "packages/license-sdk"
+  },
+  "homepage": "https://github.com/wppconnect-team/wppconnect-saas/tree/main/packages/license-sdk",
+  "bugs": "https://github.com/wppconnect-team/wppconnect-saas/issues",
+  "keywords": [
+    "wppconnect",
+    "license",
+    "browser-extension",
+    "ed25519"
+  ],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "license": "MIT"
 }

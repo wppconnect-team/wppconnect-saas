@@ -87,6 +87,20 @@ curl --fail --silent --show-error --cookie "${cookie_jar}" --request PUT \
 curl --fail --silent --show-error --cookie "${cookie_jar}" \
   'http://127.0.0.1:3000/api/telemetry/export?days=365' | jq -e '.data | length == 1'
 
+catalog_response="$(curl --fail --silent --show-error --cookie "${cookie_jar}" \
+  --header 'content-type: application/json' \
+  --data '{"name":"Woo Smoke","provider":"woocommerce","storeUrl":"https://example.com","sourceCredentials":{"consumerKey":"ck_smoke","consumerSecret":"cs_smoke","currency":"BRL"},"wppServerUrl":"https://wppconnect.io","wppSession":"smoke","wppToken":"wpp-secret-token","webhookUrl":"https://example.com/catalog"}' \
+  http://127.0.0.1:3000/api/catalog/connections)"
+catalog_id="$(jq -r '.data.id' <<<"${catalog_response}")"
+jq -e '.signingSecret | startswith("whsec_")' <<<"${catalog_response}"
+curl --fail --silent --show-error --cookie "${cookie_jar}" \
+  http://127.0.0.1:3000/api/catalog/connections | jq -e --arg id "${catalog_id}" '.data | any(.id == $id)'
+psql --set ON_ERROR_STOP=1 --host 127.0.0.1 --username wppconnect --dbname wppconnect \
+  --tuples-only --no-align --command "SELECT encrypted_source_credentials NOT LIKE '%ck_smoke%' AND encrypted_wpp_token NOT LIKE '%wpp-secret-token%' FROM catalog_connections WHERE id='${catalog_id}'" \
+  | grep -qx 't'
+curl --fail --silent --show-error --cookie "${cookie_jar}" --request DELETE \
+  http://127.0.0.1:3000/api/catalog/connections/${catalog_id} >/dev/null
+
 retention_unauthorized="$(curl --silent --output /dev/null --write-out '%{http_code}' \
   http://127.0.0.1:3000/api/internal/telemetry/retention)"
 test "${retention_unauthorized}" = "401"
@@ -172,4 +186,4 @@ logged_out_status="$(curl --silent --output /dev/null --write-out '%{http_code}'
   --cookie "${cookie_jar}" http://127.0.0.1:3000/api/platform/overview)"
 test "${logged_out_status}" = "401"
 
-echo 'Platform smoke passed: sessions, API keys, usage, privacy-safe telemetry, retention, and the complete extension-license lifecycle.'
+echo 'Platform smoke passed: sessions, API keys, usage, privacy-safe telemetry, encrypted catalog connections, retention, and the complete extension-license lifecycle.'

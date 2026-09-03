@@ -144,6 +144,9 @@ O proxy Vite redireciona `/api/*` → `http://localhost:3000` automaticamente.
 | `SMTP_USER`            | Usuário SMTP                                                      | —           |
 | `SMTP_PASS`            | Senha SMTP                                                        | —           |
 | `SMTP_FROM`            | Endereço remetente dos e-mails                                    | —           |
+| `COMPATIBILITY_INGEST_SECRET` | Chave HMAC para receber sinais dos canários                  | monitor     |
+| `WEBHOOK_ENCRYPTION_KEY` | Chave AES-256 em base64 para segredos de webhooks                  | monitor     |
+| `COMPATIBILITY_WEBHOOK_POLL_MS` | Intervalo do worker de entregas                              | padrão 5000 |
 
 > **Sem SMTP configurado:** o link de redefinição de senha é exibido no log do container (`stdout`), visível via `docker logs wppconnect-api`.
 
@@ -221,6 +224,7 @@ As migrations são aplicadas automaticamente pelo Postgres no **primeiro boot** 
 | `009_plan_columns.sql`            | Colunas de plano e billing                           |
 | `010_workspaces.sql`              | Tabela workspaces + migração para workspace_id       |
 | `011_password_reset.sql`          | Colunas reset_token e reset_token_expires            |
+| `013_compatibility_monitor.sql`   | Incidentes, sinais e outbox de webhooks assinados    |
 
 ---
 
@@ -286,6 +290,15 @@ wppconnect/
 
 Documentação interativa disponível em `http://localhost:3000/docs`.
 
+Os endpoints de webhook de compatibilidade exigem o entitlement piloto
+`compatibility-monitor/signed-webhooks`. Até a integração de billing, ele é
+provisionado manualmente no workspace aprovado:
+
+```sql
+INSERT INTO product_entitlements (workspace_id, product, entitlement)
+VALUES ('<workspace-id>', 'compatibility-monitor', 'signed-webhooks');
+```
+
 ### Endpoints principais
 
 | Método | Rota                            | Descrição                                         | Auth |
@@ -331,6 +344,13 @@ Documentação interativa disponível em `http://localhost:3000/docs`.
 | GET    | `/api/logs/stream`              | SSE — push de novos logs em tempo real            | ✓    |
 | POST   | `/api/logs`                     | Insere entrada de log                             | ✓    |
 | GET    | `/api/dashboard`                | Métricas agregadas (`?period=24h\|7d\|30d`)       | ✓    |
+| POST   | `/api/internal/compatibility/signals` | Ingestão HMAC e idempotente dos canários      | HMAC |
+| GET    | `/api/compatibility/incidents`  | Histórico de incidentes de compatibilidade          | ✓    |
+| GET    | `/api/compatibility/webhooks`   | Lista endpoints do workspace                        | ✓    |
+| POST   | `/api/compatibility/webhooks`   | Cria endpoint e retorna o segredo uma vez            | ✓    |
+| DELETE | `/api/compatibility/webhooks/:id` | Desativa endpoint                                  | ✓    |
+| GET    | `/api/compatibility/webhooks/:id/deliveries` | Histórico de entregas                  | ✓    |
+| POST   | `/api/compatibility/deliveries/:id/replay` | Reagenda entrega finalizada              | ✓    |
 | GET    | `/health`                       | Health check público                              | ✗    |
 
 ---

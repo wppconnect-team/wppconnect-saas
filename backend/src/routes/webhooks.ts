@@ -2,32 +2,7 @@ import { Elysia, t } from 'elysia';
 import { authPlugin } from '../plugins/auth';
 import { sql } from '../db';
 import { insertLog } from '../lib/log';
-
-// Bloqueia URLs que apontam para redes privadas/loopback (proteção contra SSRF)
-function isPrivateUrl(raw: string): boolean {
-  let url: URL;
-  try { url = new URL(raw); } catch { return true; }
-
-  if (!['http:', 'https:'].includes(url.protocol)) return true;
-
-  const h = url.hostname;
-  if (h === 'localhost') return true;
-  if (/^127\./.test(h)) return true;
-  if (h === '::1' || h === '[::1]') return true;
-  if (/^0\./.test(h)) return true;
-  // RFC 1918 privados
-  if (/^10\./.test(h)) return true;
-  if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return true;
-  if (/^192\.168\./.test(h)) return true;
-  // Link-local (AWS metadata, Azure IMDS, etc.)
-  if (/^169\.254\./.test(h)) return true;
-  // IPv6 link-local
-  if (/^fe80:/i.test(h)) return true;
-  // Loopback IPv6 completo
-  if (/^\[?::1\]?$/.test(h)) return true;
-
-  return false;
-}
+import { isPrivateUrl } from '../lib/urlSafety';
 
 export const webhookRoutes = new Elysia({ prefix: '/api/webhooks' })
   .use(authPlugin)

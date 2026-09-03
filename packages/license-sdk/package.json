@@ -1,0 +1,17 @@
+{
+  "name": "@wppconnect/license-sdk",
+  "version": "0.1.0",
+  "description": "Local-first WPPConnect extension license verifier",
+  "type": "module",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "import": "./src/index.js"
+    }
+  },
+  "files": ["src"],
+  "scripts": { "test": "node --test" },
+  "license": "MIT"
+}

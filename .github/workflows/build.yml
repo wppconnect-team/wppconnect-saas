@@ -57,6 +57,7 @@ jobs:
           SELECT 1 / CASE WHEN COUNT(*) = 7 THEN 1 ELSE 0 END FROM product_plans;
           SELECT 1 / CASE WHEN to_regclass('public.auth_sessions') IS NOT NULL THEN 1 ELSE 0 END;
           SELECT 1 / CASE WHEN to_regclass('public.usage_events') IS NOT NULL THEN 1 ELSE 0 END;
+          SELECT 1 / CASE WHEN to_regclass('public.extension_licenses') IS NOT NULL THEN 1 ELSE 0 END;
           SQL
 
       - name: Exercise migration from the legacy Cloud schema
@@ -107,3 +108,16 @@ jobs:
 
       - name: Unit tests
         run: bun test
+
+  license-sdk:
+    name: License SDK tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/license-sdk
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - run: npm test

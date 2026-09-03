@@ -195,19 +195,8 @@ jobs:
           provenance: mode=max
           sbom: true
 
-      - name: Make the container package public
+      - name: Verify published tags
         if: github.event_name != 'pull_request'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh api --method PATCH \
-            "/orgs/${GITHUB_REPOSITORY_OWNER}/packages/container/wppconnect-media-api" \
-            --field visibility=public
-
-      - name: Verify an anonymous pull
-        if: github.event_name != 'pull_request'
-        env:
-          IMAGE: ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
-        run: |
-          docker logout ghcr.io
-          docker buildx imagetools inspect "${IMAGE}" >/dev/null
+          docker buildx imagetools inspect "${IMAGE_NAME}:latest" >/dev/null
+          docker buildx imagetools inspect "${IMAGE_NAME}:sha-${GITHUB_SHA::7}" >/dev/null

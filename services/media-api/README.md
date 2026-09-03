@@ -18,3 +18,7 @@ The continuously validated production image is published as
 an immutable `sha-<commit>` tag and OCI provenance/SBOM attestations. Deployment
 still requires PostgreSQL, persistent `/data` storage, HTTPS, and the secrets
 listed in `.env.example`.
+
+The WPPConnect organization currently disables public package visibility. Until
+an organization owner enables it, authenticate `docker` to `ghcr.io` with a
+GitHub token carrying `read:packages` before pulling the image.

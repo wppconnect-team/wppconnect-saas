@@ -57,7 +57,10 @@ export const compatibilityManifestRoutes = new Elysia({ prefix: '/api/v1/compati
     return { data: { ...key, algorithm: 'Ed25519' } };
   }, { params: t.Object({ keyId: t.String({ pattern: '^[a-zA-Z0-9._-]{1,80}$' }) }) });
 
-export const internalCompatibilityManifestRoutes = new Elysia({ prefix: '/api/internal/compatibility/manifests' })
+export const internalCompatibilityManifestRoutes = new Elysia({
+  prefix: '/api/internal/compatibility/manifests',
+  normalize: false,
+})
   .put('/:package', async ({ request, params, body, set }) => {
     if (!acceptsBearerSecret(request.headers.get('authorization'), process.env.COMPATIBILITY_MANIFEST_ADMIN_SECRET ?? '')) {
       set.status = 401; return { error: 'Invalid compatibility manifest credential' };

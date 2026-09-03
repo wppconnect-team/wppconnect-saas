@@ -10,6 +10,16 @@ import { acceptsBearerSecret } from '../lib/internalAuth';
 
 const packagePattern = '^(@[a-z0-9._-]+/)?[a-z0-9._-]+$';
 const capabilityNamePattern = '^[a-zA-Z][a-zA-Z0-9._-]{0,79}$';
+const publishBodyFields = new Set([
+  'whatsappVersion',
+  'minimumPackageVersion',
+  'recommendedPackageVersion',
+  'capabilities',
+  'featureFlags',
+  'workaroundUrl',
+  'notes',
+  'expiresInSeconds',
+]);
 
 function normalizedPem(value: string): string {
   return value.replace(/\\n/g, '\n');
@@ -34,7 +44,7 @@ const publishBody = t.Object({
   workaroundUrl: t.Optional(t.String({ format: 'uri', maxLength: 2048 })),
   notes: t.Optional(t.String({ maxLength: 1000 })),
   expiresInSeconds: t.Integer({ minimum: 300, maximum: 604800 }),
-}, { additionalProperties: false });
+}, { additionalProperties: true });
 
 export const compatibilityManifestRoutes = new Elysia({ prefix: '/api/v1/compatibility' })
   .get('/manifests/:package/latest', async ({ params, set }) => {
@@ -57,13 +67,15 @@ export const compatibilityManifestRoutes = new Elysia({ prefix: '/api/v1/compati
     return { data: { ...key, algorithm: 'Ed25519' } };
   }, { params: t.Object({ keyId: t.String({ pattern: '^[a-zA-Z0-9._-]{1,80}$' }) }) });
 
-export const internalCompatibilityManifestRoutes = new Elysia({
-  prefix: '/api/internal/compatibility/manifests',
-  normalize: false,
-})
+export const internalCompatibilityManifestRoutes = new Elysia({ prefix: '/api/internal/compatibility/manifests' })
   .put('/:package', async ({ request, params, body, set }) => {
     if (!acceptsBearerSecret(request.headers.get('authorization'), process.env.COMPATIBILITY_MANIFEST_ADMIN_SECRET ?? '')) {
       set.status = 401; return { error: 'Invalid compatibility manifest credential' };
+    }
+    const unexpectedFields = Object.keys(body).filter((field) => !publishBodyFields.has(field));
+    if (unexpectedFields.length > 0) {
+      set.status = 400;
+      return { error: 'Compatibility manifests only accept declarative fields', unexpectedFields };
     }
     const config = manifestConfig();
     if (!config) { set.status = 503; return { error: 'Compatibility manifest signing is not configured' }; }

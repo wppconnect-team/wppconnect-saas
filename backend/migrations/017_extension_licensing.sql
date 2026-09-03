@@ -1,4 +1,4 @@
-CREATE TABLE extension_apps (
+CREATE TABLE IF NOT EXISTS extension_apps (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   name VARCHAR(160) NOT NULL,
@@ -12,7 +12,7 @@ CREATE TABLE extension_apps (
   UNIQUE (workspace_id, slug)
 );
 
-CREATE TABLE extension_plans (
+CREATE TABLE IF NOT EXISTS extension_plans (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   app_id UUID NOT NULL REFERENCES extension_apps(id) ON DELETE CASCADE,
   slug VARCHAR(80) NOT NULL,
@@ -28,7 +28,7 @@ CREATE TABLE extension_plans (
   UNIQUE (app_id, slug)
 );
 
-CREATE TABLE extension_licenses (
+CREATE TABLE IF NOT EXISTS extension_licenses (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   app_id UUID NOT NULL REFERENCES extension_apps(id) ON DELETE CASCADE,
   plan_id UUID NOT NULL REFERENCES extension_plans(id) ON DELETE RESTRICT,
@@ -44,7 +44,7 @@ CREATE TABLE extension_licenses (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE extension_license_activations (
+CREATE TABLE IF NOT EXISTS extension_license_activations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   license_id UUID NOT NULL REFERENCES extension_licenses(id) ON DELETE CASCADE,
   installation_hash CHAR(64) NOT NULL,
@@ -56,7 +56,7 @@ CREATE TABLE extension_license_activations (
   UNIQUE (license_id, installation_hash)
 );
 
-CREATE TABLE extension_license_audit_events (
+CREATE TABLE IF NOT EXISTS extension_license_audit_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   app_id UUID NOT NULL REFERENCES extension_apps(id) ON DELETE CASCADE,
   license_id UUID REFERENCES extension_licenses(id) ON DELETE CASCADE,
@@ -67,7 +67,7 @@ CREATE TABLE extension_license_audit_events (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_extension_apps_workspace ON extension_apps(workspace_id, created_at DESC);
-CREATE INDEX idx_extension_licenses_app_status ON extension_licenses(app_id, status, created_at DESC);
-CREATE INDEX idx_extension_activations_license_status ON extension_license_activations(license_id, status);
-CREATE INDEX idx_extension_audit_app_created ON extension_license_audit_events(app_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_extension_apps_workspace ON extension_apps(workspace_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_extension_licenses_app_status ON extension_licenses(app_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_extension_activations_license_status ON extension_license_activations(license_id, status);
+CREATE INDEX IF NOT EXISTS idx_extension_audit_app_created ON extension_license_audit_events(app_id, created_at DESC);

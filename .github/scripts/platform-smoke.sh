@@ -5,8 +5,15 @@ cookie_jar="$(mktemp)"
 server_log="$(mktemp)"
 telemetry_payload="$(mktemp)"
 cleanup() {
+  status=$?
+  if [[ "${status}" -ne 0 ]]; then
+    echo '--- backend log after smoke failure ---' >&2
+    cat "${server_log}" >&2
+  fi
   if [[ -n "${server_pid:-}" ]]; then kill "${server_pid}" 2>/dev/null || true; fi
   rm -f "${cookie_jar}" "${server_log}" "${telemetry_payload}"
+  trap - EXIT
+  exit "${status}"
 }
 trap cleanup EXIT
 

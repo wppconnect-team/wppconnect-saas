@@ -1,0 +1,12 @@
+{
+  "name": "@wppconnect/telemetry-sdk",
+  "version": "0.1.0",
+  "description": "Explicit opt-in aggregate telemetry for WPPConnect applications",
+  "type": "module",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "exports": { ".": { "types": "./src/index.d.ts", "import": "./src/index.js" } },
+  "files": ["src"],
+  "scripts": { "test": "node --test" },
+  "license": "MIT"
+}

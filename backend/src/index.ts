@@ -24,6 +24,7 @@ import { runSetup }        from './lib/setup';
 import { runMigrations }   from './lib/migrations';
 import { startCompatibilityWebhookWorker } from './workers/compatibilityWebhookWorker';
 import { licensingRoutes, publicLicensingRoutes } from './routes/licensing';
+import { internalTelemetryRoutes, telemetryIngestRoutes, telemetryRoutes } from './routes/telemetry';
 
 const PORT = Number(process.env.PORT ?? 3000);
 
@@ -89,6 +90,9 @@ const app = new Elysia()
   .use(internalCompatibilityRoutes)
   .use(licensingRoutes)
   .use(publicLicensingRoutes)
+  .use(telemetryIngestRoutes)
+  .use(telemetryRoutes)
+  .use(internalTelemetryRoutes)
 
   // Erro global
   .onError(({ code, error, set }) => {

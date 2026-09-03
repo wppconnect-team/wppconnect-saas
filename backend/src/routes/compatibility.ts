@@ -14,6 +14,8 @@ import {
 } from '../lib/compatibility';
 import { encryptSecret } from '../lib/encryptedSecret';
 import { isPrivateUrl } from '../lib/urlSafety';
+import { acceptsBearerSecret } from '../lib/internalAuth';
+import { processCompatibilityWebhookBatch } from '../workers/compatibilityWebhookWorker';
 
 interface MonitorRow {
   status: 'passing' | 'failing' | 'unknown';
@@ -256,7 +258,15 @@ export const internalCompatibilityRoutes = new Elysia({ prefix: '/api/internal/c
       return result;
     },
     { body: signalSchema }
-  );
+  )
+  .get('/deliveries/drain', async ({ request, set }) => {
+    if (!acceptsBearerSecret(request.headers.get('authorization'), process.env.CRON_SECRET ?? '')) {
+      set.status = 401;
+      return { error: 'Invalid cron credential' };
+    }
+    const processed = await processCompatibilityWebhookBatch(25);
+    return { processed };
+  });
 
 export const compatibilityRoutes = new Elysia({ prefix: '/api/compatibility' })
   .use(authPlugin)

@@ -1,5 +1,6 @@
 import { Elysia } from 'elysia';
 import { jwt } from '@elysiajs/jwt';
+import { sql } from '../db';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('JWT_SECRET env var is required');
@@ -17,10 +18,35 @@ export const authPlugin = new Elysia({ name: 'auth-plugin' })
     }
 
     const p = payload as Record<string, unknown>;
+    const sessionId = String(p.sid ?? '');
+    const jti = String(p.jti ?? '');
+    const userId = String(p.sub ?? '');
+    const workspaceId = String(p.wid ?? '');
+    if (!sessionId || !jti || !userId || !workspaceId) {
+      auth.remove();
+      return { userId: '', userEmail: '', workspaceId: '', sessionId: '' };
+    }
+
+    const [session] = await sql`
+      SELECT id
+      FROM auth_sessions
+      WHERE id = ${sessionId}
+        AND user_id = ${userId}
+        AND workspace_id = ${workspaceId}
+        AND current_jti = ${jti}
+        AND revoked_at IS NULL
+        AND expires_at > NOW()
+    `;
+    if (!session) {
+      auth.remove();
+      return { userId: '', userEmail: '', workspaceId: '', sessionId: '' };
+    }
+
     return {
-      userId:      String(p.sub   ?? ''),
+      userId,
       userEmail:   String(p.email ?? ''),
-      workspaceId: String(p.wid   ?? ''),
+      workspaceId,
+      sessionId,
     };
   })
   .onBeforeHandle({ as: 'scoped' }, ({ userId, set }) => {

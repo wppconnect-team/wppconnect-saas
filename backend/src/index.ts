@@ -13,7 +13,9 @@ import { dashboardRoutes } from './routes/dashboard';
 import { groupRoutes }     from './routes/groups';
 import { memberRoutes }    from './routes/members';
 import { planRoutes }      from './routes/plan';
+import { compatibilityRoutes, internalCompatibilityRoutes } from './routes/compatibility';
 import { runSetup }        from './lib/setup';
+import { startCompatibilityWebhookWorker } from './workers/compatibilityWebhookWorker';
 
 const PORT = Number(process.env.PORT ?? 3000);
 
@@ -38,6 +40,7 @@ new Elysia()
         { name: 'Logs',      description: 'Logs do sistema'            },
         { name: 'Dashboard', description: 'Métricas e visão geral'     },
         { name: 'Groups',    description: 'Grupos WhatsApp'            },
+        { name: 'Compatibility', description: 'Incidentes e webhooks de compatibilidade' },
       ],
       components: {
         securitySchemes: {
@@ -70,6 +73,8 @@ new Elysia()
   .use(webhookRoutes)
   .use(tokenRoutes)
   .use(logRoutes)
+  .use(compatibilityRoutes)
+  .use(internalCompatibilityRoutes)
 
   // Erro global
   .onError(({ code, error, set }) => {
@@ -89,5 +94,6 @@ new Elysia()
   .listen(PORT);
 
 await runSetup();
+startCompatibilityWebhookWorker();
 
 console.log(`🦊  Wppconnect API → http://localhost:${PORT}`);

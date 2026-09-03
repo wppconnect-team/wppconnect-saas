@@ -5,8 +5,15 @@ cookie_jar="$(mktemp)"
 server_log="$(mktemp)"
 telemetry_payload="$(mktemp)"
 cleanup() {
+  status=$?
+  if [[ "${status}" -ne 0 ]]; then
+    echo '--- backend log after smoke failure ---' >&2
+    cat "${server_log}" >&2
+  fi
   if [[ -n "${server_pid:-}" ]]; then kill "${server_pid}" 2>/dev/null || true; fi
   rm -f "${cookie_jar}" "${server_log}" "${telemetry_payload}"
+  trap - EXIT
+  exit "${status}"
 }
 trap cleanup EXIT
 
@@ -20,6 +27,9 @@ export COMPATIBILITY_INGEST_SECRET="platform-smoke-ingest-secret"
 export WEBHOOK_ENCRYPTION_KEY="$(openssl rand -base64 32)"
 export COMPATIBILITY_WEBHOOK_POLL_MS="60000"
 export CRON_SECRET="platform-smoke-cron-secret"
+export COMPATIBILITY_MANIFEST_PRIVATE_KEY="$(openssl genpkey -algorithm ED25519)"
+export COMPATIBILITY_MANIFEST_KEY_ID="smoke-key-1"
+export COMPATIBILITY_MANIFEST_ADMIN_SECRET="platform-smoke-manifest-admin"
 
 (
   cd backend
@@ -100,6 +110,38 @@ psql --set ON_ERROR_STOP=1 --host 127.0.0.1 --username wppconnect --dbname wppco
   | grep -qx 't'
 curl --fail --silent --show-error --cookie "${cookie_jar}" --request DELETE \
   http://127.0.0.1:3000/api/catalog/connections/${catalog_id} >/dev/null
+
+manifest_body='{"whatsappVersion":"2.3000.1","minimumPackageVersion":"3.20.0","recommendedPackageVersion":"3.21.0","capabilities":{"sendText":"supported","ptt":"degraded"},"featureFlags":{"useLegacyPtt":true},"workaroundUrl":"https://wppconnect.io/status","notes":"Declarative smoke manifest","expiresInSeconds":3600}'
+manifest_response="$(curl --fail --silent --show-error --request PUT \
+  --header "authorization: Bearer ${COMPATIBILITY_MANIFEST_ADMIN_SECRET}" \
+  --header 'content-type: application/json' --data "${manifest_body}" \
+  http://127.0.0.1:3000/api/internal/compatibility/manifests/%40wppconnect%2Fwa-js)"
+jq -e '.data.payload.revision == 1 and .data.payload.featureFlags.useLegacyPtt == true and (.data.token | split(".") | length == 3)' <<<"${manifest_response}"
+curl --fail --silent --show-error \
+  http://127.0.0.1:3000/api/v1/compatibility/manifests/%40wppconnect%2Fwa-js/latest \
+  | jq -e '.data.payload.package == "@wppconnect/wa-js" and .data.keyId == "smoke-key-1"'
+curl --fail --silent --show-error \
+  http://127.0.0.1:3000/api/v1/compatibility/keys/smoke-key-1 \
+  | jq -e '.data.algorithm == "Ed25519" and (.data.publicKey | startswith("-----BEGIN PUBLIC KEY-----"))'
+manifest_unauthorized="$(curl --silent --output /dev/null --write-out '%{http_code}' --request PUT \
+  --header 'content-type: application/json' --data "${manifest_body}" \
+  http://127.0.0.1:3000/api/internal/compatibility/manifests/%40wppconnect%2Fwa-js)"
+if [[ "${manifest_unauthorized}" != "401" ]]; then
+  echo "Expected unsigned manifest publish to return 401, got ${manifest_unauthorized}" >&2
+  exit 1
+fi
+manifest_code_field_status="$(curl --silent --output /dev/null --write-out '%{http_code}' --request PUT \
+  --header "authorization: Bearer ${COMPATIBILITY_MANIFEST_ADMIN_SECRET}" \
+  --header 'content-type: application/json' \
+  --data '{"whatsappVersion":"2.3000.1","minimumPackageVersion":"3.20.0","recommendedPackageVersion":"3.21.0","capabilities":{},"featureFlags":{},"expiresInSeconds":3600,"remoteJavaScript":"alert(1)"}' \
+  http://127.0.0.1:3000/api/internal/compatibility/manifests/%40wppconnect%2Fwa-js)"
+if [[ "${manifest_code_field_status}" != "400" && "${manifest_code_field_status}" != "422" ]]; then
+  echo "Expected executable manifest field to be rejected with 400/422, got ${manifest_code_field_status}" >&2
+  exit 1
+fi
+psql --set ON_ERROR_STOP=1 --host 127.0.0.1 --username wppconnect --dbname wppconnect \
+  --tuples-only --no-align --command "SELECT COUNT(*) FROM compatibility_manifests WHERE package_name='@wppconnect/wa-js'" \
+  | grep -qx '1'
 
 retention_unauthorized="$(curl --silent --output /dev/null --write-out '%{http_code}' \
   http://127.0.0.1:3000/api/internal/telemetry/retention)"
@@ -186,4 +228,4 @@ logged_out_status="$(curl --silent --output /dev/null --write-out '%{http_code}'
   --cookie "${cookie_jar}" http://127.0.0.1:3000/api/platform/overview)"
 test "${logged_out_status}" = "401"
 
-echo 'Platform smoke passed: sessions, API keys, usage, privacy-safe telemetry, encrypted catalog connections, retention, and the complete extension-license lifecycle.'
+echo 'Platform smoke passed: sessions, API keys, usage, telemetry, catalog, signed compatibility manifest, retention, and licensing.'

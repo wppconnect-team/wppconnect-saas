@@ -137,7 +137,7 @@ jobs:
           curl --fail --silent http://127.0.0.1:3100/health \
             | jq -e '.status == "ok" and .service == "wppconnect-media-api"' >/dev/null
 
-          docker exec "${container}" ffmpeg -hide_banner -loglevel error -f lavfi \
+          docker exec --user root "${container}" ffmpeg -hide_banner -loglevel error -f lavfi \
             -i 'sine=frequency=880:duration=1' -ar 16000 -ac 1 /tmp/input.wav
           docker cp "${container}:/tmp/input.wav" "${input}"
           job_response="$(curl --fail --silent --show-error \

@@ -1,6 +1,11 @@
 import { Elysia, t } from 'elysia';
 import { sql } from '../db';
-import { assertUsageQuantity, grantsScope, PLATFORM_PRODUCTS } from '../lib/platform';
+import {
+  assertUsageQuantity,
+  entitlementForScope,
+  grantsScope,
+  PLATFORM_PRODUCTS,
+} from '../lib/platform';
 import { apiKeyPlugin } from '../plugins/apiKeyAuth';
 import { authPlugin } from '../plugins/auth';
 
@@ -151,11 +156,30 @@ export const usageIngestRoutes = new Elysia({ prefix: '/api/v1/usage' })
 
 export const apiAuthenticationRoutes = new Elysia({ prefix: '/api/v1/auth' })
   .use(apiKeyPlugin)
-  .get('/context', ({ apiTokenId, apiWorkspaceId, apiScopes, query, set }) => {
+  .get('/context', async ({ apiTokenId, apiWorkspaceId, apiScopes, query, set }) => {
     if (query.required && !grantsScope(apiScopes, query.required)) {
       set.status = 403;
       return { error: `A chave não possui o escopo ${query.required}` };
     }
+
+    const requiredEntitlement = query.required ? entitlementForScope(query.required) : null;
+    if (requiredEntitlement) {
+      const [entitlement] = await sql`
+        SELECT id
+        FROM product_entitlements
+        WHERE workspace_id = ${apiWorkspaceId}
+          AND product = ${requiredEntitlement.product}
+          AND entitlement = ${requiredEntitlement.entitlement}
+          AND status = 'active'
+          AND (expires_at IS NULL OR expires_at > NOW())
+        LIMIT 1
+      `;
+      if (!entitlement) {
+        set.status = 403;
+        return { error: 'Uma assinatura ativa do WPPConnect Cloud é necessária' };
+      }
+    }
+
     return {
       tokenId: apiTokenId,
       workspaceId: apiWorkspaceId,

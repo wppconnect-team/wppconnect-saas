@@ -12,6 +12,23 @@ CREATE TABLE IF NOT EXISTS users (
   created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
+-- Compatibilidade com o schema original do wppconnect-cloud. A tabela users
+-- já existia com `password`, sem `password_hash` e sem timestamps.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'password'
+  ) THEN
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;
+    UPDATE users SET password_hash = password WHERE password_hash IS NULL;
+    ALTER TABLE users ALTER COLUMN password_hash SET NOT NULL;
+  END IF;
+END $$;
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
 -- ──────────────────────────────────────────
 -- Sessões WhatsApp
 -- ──────────────────────────────────────────

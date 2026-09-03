@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'crypto';
 
 export const PLATFORM_PRODUCTS = [
+  'cloud-runtime',
   'compatibility-monitor',
   'extension-licensing',
   'media-api',
@@ -32,6 +33,17 @@ export function grantsScope(granted: readonly string[], required: string): boole
   if (granted.includes('*') || granted.includes(required)) return true;
   const separator = required.indexOf(':');
   return separator > 0 && granted.includes(`${required.slice(0, separator)}:*`);
+}
+
+export function entitlementForScope(required: string): {
+  product: PlatformProduct;
+  entitlement: string;
+} | null {
+  const namespace = required.split(':', 1)[0];
+  if (['sessions', 'messages', 'groups', 'numbers', 'webhooks'].includes(namespace)) {
+    return { product: 'cloud-runtime', entitlement: 'api-access' };
+  }
+  return null;
 }
 
 export function normalizeScopes(scopes: readonly string[]): string[] {

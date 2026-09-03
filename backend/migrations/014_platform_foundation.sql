@@ -111,6 +111,7 @@ ALTER TABLE api_tokens
   ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 INSERT INTO products (slug, name, description, status) VALUES
+  ('cloud-runtime', 'WPPConnect Cloud Runtime', 'Sessões gerenciadas e APIs de mensagens.', 'active'),
   ('compatibility-monitor', 'Compatibility Monitor', 'Incidentes de compatibilidade e webhooks assinados.', 'active'),
   ('extension-licensing', 'Extension Licensing', 'Licenças, ativações e entitlements para extensões.', 'private'),
   ('media-api', 'Media API', 'Conversão PTT e transcrição de áudio.', 'private'),
@@ -119,6 +120,20 @@ INSERT INTO products (slug, name, description, status) VALUES
 ON CONFLICT (slug) DO UPDATE SET
   name = EXCLUDED.name,
   description = EXCLUDED.description;
+
+INSERT INTO product_plans (
+  product_id, slug, name, billing_model, currency, unit_amount, billing_interval, limits
+)
+SELECT id, tier.slug, tier.name, 'subscription', 'BRL', tier.amount, 'month', tier.limits
+FROM products
+CROSS JOIN (VALUES
+  ('evolution', 'Evolution API', 3500, '{"sessions": 1}'::jsonb),
+  ('wppconnect', 'WPPConnect', 4500, '{"sessions": 1}'::jsonb),
+  ('wuzapi', 'WuzAPI', 2500, '{"sessions": 1}'::jsonb)
+) AS tier(slug, name, amount, limits)
+WHERE products.slug = 'cloud-runtime'
+ON CONFLICT (product_id, slug) DO UPDATE SET
+  name = EXCLUDED.name, unit_amount = EXCLUDED.unit_amount, limits = EXCLUDED.limits;
 
 INSERT INTO product_plans (
   product_id, slug, name, billing_model, currency, unit_amount, billing_interval, limits

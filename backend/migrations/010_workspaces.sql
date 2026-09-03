@@ -42,8 +42,56 @@ DECLARE
   v_plan_slug    TEXT;
   v_billing      TEXT;
   v_renews_at    DATE;
+  v_user         RECORD;
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM users WHERE workspace_id IS NULL LIMIT 1) THEN
+    RETURN;
+  END IF;
+
+  -- O banco legado do WPPConnect Cloud tinha uma conta independente por
+  -- usuário. Preserva esse isolamento em vez de juntar clientes distintos no
+  -- workspace único usado pela instalação SaaS legada.
+  IF to_regclass('public.subscriptions') IS NOT NULL
+     AND to_regclass('public.api_keys') IS NOT NULL THEN
+    FOR v_user IN
+      SELECT id, COALESCE(name, 'Cloud Workspace') AS name,
+             COALESCE(plan_slug, 'pro') AS plan_slug,
+             COALESCE(billing_cycle, 'monthly') AS billing_cycle,
+             COALESCE(plan_renews_at, CURRENT_DATE + INTERVAL '30 days') AS plan_renews_at
+      FROM users
+      WHERE workspace_id IS NULL
+      ORDER BY id
+    LOOP
+      INSERT INTO workspaces (name, slug, plan_slug, billing_cycle, plan_renews_at)
+      VALUES (
+        v_user.name || ' Workspace',
+        'cloud-' || replace(v_user.id::text, '-', ''),
+        v_user.plan_slug,
+        v_user.billing_cycle,
+        v_user.plan_renews_at
+      )
+      ON CONFLICT (slug) DO NOTHING;
+
+      UPDATE users
+      SET workspace_id = (
+        SELECT id FROM workspaces
+        WHERE slug = 'cloud-' || replace(v_user.id::text, '-', '')
+      )
+      WHERE id = v_user.id;
+    END LOOP;
+
+    UPDATE sessions resource SET workspace_id = account.workspace_id
+      FROM users account WHERE resource.user_id = account.id AND resource.workspace_id IS NULL;
+    UPDATE contacts resource SET workspace_id = account.workspace_id
+      FROM users account WHERE resource.user_id = account.id AND resource.workspace_id IS NULL;
+    UPDATE webhooks resource SET workspace_id = account.workspace_id
+      FROM users account WHERE resource.user_id = account.id AND resource.workspace_id IS NULL;
+    UPDATE api_tokens resource SET workspace_id = account.workspace_id
+      FROM users account WHERE resource.user_id = account.id AND resource.workspace_id IS NULL;
+    UPDATE logs resource SET workspace_id = account.workspace_id
+      FROM users account WHERE resource.user_id = account.id AND resource.workspace_id IS NULL;
+    UPDATE groups resource SET workspace_id = account.workspace_id
+      FROM users account WHERE resource.user_id = account.id AND resource.workspace_id IS NULL;
     RETURN;
   END IF;
 

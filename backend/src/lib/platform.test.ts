@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   assertUsageQuantity,
   createApiCredential,
+  entitlementForScope,
   grantsScope,
   hashOpaqueToken,
   normalizeScopes,
@@ -22,6 +23,18 @@ describe('platform credentials', () => {
     expect(grantsScope(['media:*'], 'media:transcriptions:create')).toBe(true);
     expect(grantsScope(['media:read'], 'media:write')).toBe(false);
     expect(grantsScope(['*'], 'catalog:sync')).toBe(true);
+  });
+
+  test('maps managed Cloud scopes to the paid runtime entitlement', () => {
+    expect(entitlementForScope('sessions:create')).toEqual({
+      product: 'cloud-runtime',
+      entitlement: 'api-access',
+    });
+    expect(entitlementForScope('messages:send')).toEqual({
+      product: 'cloud-runtime',
+      entitlement: 'api-access',
+    });
+    expect(entitlementForScope('usage:write')).toBeNull();
   });
 });
 

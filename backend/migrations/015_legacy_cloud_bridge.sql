@@ -51,16 +51,25 @@ BEGIN
     workspace_id, product, entitlement, status, subscription_id, limit_value, metadata
   )
   SELECT
-    subscription.workspace_id,
+    chosen.workspace_id,
     'cloud-runtime',
     'api-access',
-    CASE WHEN subscription.status IN ('active', 'trialing') THEN 'active' ELSE 'revoked' END,
-    subscription.id,
+    CASE WHEN chosen.status IN ('active', 'trialing') THEN 'active' ELSE 'revoked' END,
+    chosen.id,
     1,
     jsonb_build_object('source', 'legacy-cloud')
-  FROM workspace_subscriptions subscription
-  JOIN product_plans plan ON plan.id = subscription.plan_id
-  JOIN products product ON product.id = plan.product_id AND product.slug = 'cloud-runtime'
+  FROM (
+    SELECT DISTINCT ON (subscription.workspace_id)
+      subscription.id, subscription.workspace_id, subscription.status
+    FROM workspace_subscriptions subscription
+    JOIN product_plans plan ON plan.id = subscription.plan_id
+    JOIN products product ON product.id = plan.product_id AND product.slug = 'cloud-runtime'
+    ORDER BY
+      subscription.workspace_id,
+      CASE WHEN subscription.status IN ('active', 'trialing') THEN 0 ELSE 1 END,
+      subscription.updated_at DESC,
+      subscription.id
+  ) chosen
   ON CONFLICT (workspace_id, product, entitlement) DO UPDATE SET
     status = EXCLUDED.status,
     subscription_id = EXCLUDED.subscription_id,

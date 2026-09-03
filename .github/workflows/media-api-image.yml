@@ -1,0 +1,196 @@
+name: Media API image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/media-api/**"
+      - "backend/migrations/**"
+      - ".github/workflows/media-api-image.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "services/media-api/**"
+      - "backend/migrations/**"
+      - ".github/workflows/media-api-image.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  attestations: write
+  id-token: write
+
+env:
+  IMAGE_NAME: ghcr.io/wppconnect-team/wppconnect-media-api
+  PGPASSWORD: test-password
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: wppconnect
+          POSTGRES_PASSWORD: test-password
+          POSTGRES_DB: wppconnect
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U wppconnect -d wppconnect"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Apply database migrations
+        run: |
+          for migration in backend/migrations/*.sql; do
+            psql --set ON_ERROR_STOP=1 --host 127.0.0.1 --username wppconnect \
+              --dbname wppconnect --file "${migration}"
+          done
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build image for smoke
+        uses: docker/build-push-action@v7
+        with:
+          context: services/media-api
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Exercise the built image end to end
+        env:
+          IMAGE: ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          container="media-api-smoke-${GITHUB_RUN_ID}"
+          input="$(mktemp --suffix=.wav)"
+          output="$(mktemp --suffix=.ogg)"
+          cleanup() {
+            status=$?
+            if [[ "${status}" -ne 0 ]]; then docker logs "${container}" || true; fi
+            docker rm -f "${container}" >/dev/null 2>&1 || true
+            rm -f "${input}" "${output}"
+            trap - EXIT
+            exit "${status}"
+          }
+          trap cleanup EXIT
+
+          token="wpp_media_smoke_${GITHUB_RUN_ID}_credential"
+          token_hash="$(printf '%s' "${token}" | sha256sum | cut -d' ' -f1)"
+          psql --set ON_ERROR_STOP=1 --host 127.0.0.1 --username wppconnect \
+            --dbname wppconnect --set=token_hash="${token_hash}" <<'SQL'
+          WITH workspace AS (
+            INSERT INTO workspaces (name, slug) VALUES ('Media image smoke', 'media-image-smoke')
+            RETURNING id
+          ), account AS (
+            INSERT INTO users (name, email, password_hash, workspace_id, role, must_change_password)
+            SELECT 'Media smoke', 'media-image-smoke@example.com', crypt('unused', gen_salt('bf', 4)), id, 'admin', FALSE
+            FROM workspace RETURNING id, workspace_id
+          )
+          INSERT INTO api_tokens (name, token_hash, token_prefix, scopes, user_id, workspace_id)
+          SELECT 'Media smoke', :'token_hash', 'wpp_media_smoke', ARRAY['media:write','media:read'], id, workspace_id
+          FROM account;
+          SQL
+
+          storage_key="$(openssl rand -base64 32 | tr -d '\n')"
+          docker run --detach --name "${container}" --network host \
+            --env DATABASE_URL='postgres://wppconnect:test-password@127.0.0.1:5432/wppconnect' \
+            --env MEDIA_STORAGE_KEY="${storage_key}" \
+            --env MEDIA_RESULT_SIGNING_SECRET="$(openssl rand -hex 32)" \
+            --env MEDIA_WEBHOOK_SIGNING_SECRET="$(openssl rand -hex 32)" \
+            --env MEDIA_PUBLIC_URL='http://127.0.0.1:3100' \
+            "${IMAGE}" >/dev/null
+
+          for _ in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:3100/health \
+              | jq -e '.status == "ok" and .service == "wppconnect-media-api"' >/dev/null; then break; fi
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:3100/health \
+            | jq -e '.status == "ok" and .service == "wppconnect-media-api"' >/dev/null
+
+          docker exec --user root "${container}" ffmpeg -hide_banner -loglevel error -f lavfi \
+            -i 'sine=frequency=880:duration=1' -ar 16000 -ac 1 /tmp/input.wav
+          docker cp "${container}:/tmp/input.wav" "${input}"
+          job_response="$(curl --fail --silent --show-error \
+            --header "Authorization: Bearer ${token}" \
+            --header "Idempotency-Key: media-image-${GITHUB_RUN_ID}" \
+            --form "file=@${input};type=audio/wav" \
+            http://127.0.0.1:3100/v1/audio/conversions)"
+          job_id="$(jq -er '.data.id' <<<"${job_response}")"
+          jq -e '.duplicate == false and .data.status == "queued"' <<<"${job_response}" >/dev/null
+
+          for _ in $(seq 1 60); do
+            job="$(curl --fail --silent --show-error \
+              --header "Authorization: Bearer ${token}" \
+              "http://127.0.0.1:3100/v1/jobs/${job_id}")"
+            status="$(jq -r '.data.status' <<<"${job}")"
+            if [[ "${status}" == 'succeeded' ]]; then break; fi
+            if [[ "${status}" == 'failed' ]]; then jq . <<<"${job}"; exit 1; fi
+            sleep 1
+          done
+          test "${status}" = 'succeeded'
+          result_url="$(jq -er '.data.resultUrl' <<<"${job}")"
+          curl --fail --silent --show-error "${result_url}" --output "${output}"
+          docker exec --interactive --user root "${container}" sh -c \
+            'cat > /tmp/output.ogg' < "${output}"
+          docker exec "${container}" ffprobe -v error -select_streams a:0 \
+            -show_entries stream=codec_name,sample_rate,channels -of json /tmp/output.ogg \
+            | jq -e '.streams[0].codec_name == "opus" and .streams[0].sample_rate == "48000" and .streams[0].channels == 1' >/dev/null
+
+          duplicate="$(curl --fail --silent --show-error \
+            --header "Authorization: Bearer ${token}" \
+            --header "Idempotency-Key: media-image-${GITHUB_RUN_ID}" \
+            --form "file=@${input};type=audio/wav" \
+            http://127.0.0.1:3100/v1/audio/conversions)"
+          jq -e --arg id "${job_id}" '.duplicate == true and .data.id == $id' <<<"${duplicate}" >/dev/null
+          docker exec "${container}" sh -eu -c '
+            count=0
+            for file in $(find /data -name "*.enc"); do
+              test "$(head -c 5 "${file}")" = WPPM1
+              ! grep -aq RIFF "${file}"
+              count=$((count + 1))
+            done
+            test "${count}" -ge 2
+          '
+
+      - name: Publish immutable and latest tags
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v7
+        with:
+          context: services/media-api
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          provenance: mode=max
+          sbom: true

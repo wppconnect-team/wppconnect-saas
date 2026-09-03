@@ -14,14 +14,16 @@ import { groupRoutes }     from './routes/groups';
 import { memberRoutes }    from './routes/members';
 import { planRoutes }      from './routes/plan';
 import { compatibilityRoutes, internalCompatibilityRoutes } from './routes/compatibility';
+import { platformRoutes, publicPlatformRoutes, usageIngestRoutes } from './routes/platform';
 import { runSetup }        from './lib/setup';
+import { runMigrations }   from './lib/migrations';
 import { startCompatibilityWebhookWorker } from './workers/compatibilityWebhookWorker';
 
 const PORT = Number(process.env.PORT ?? 3000);
 
 const origins = (process.env.FRONTEND_URL ?? 'http://localhost:5173').split(',');
 
-new Elysia()
+const app = new Elysia()
   .use(securityPlugin)
   .use(swagger({
     path: '/docs',
@@ -73,6 +75,9 @@ new Elysia()
   .use(webhookRoutes)
   .use(tokenRoutes)
   .use(logRoutes)
+  .use(publicPlatformRoutes)
+  .use(platformRoutes)
+  .use(usageIngestRoutes)
   .use(compatibilityRoutes)
   .use(internalCompatibilityRoutes)
 
@@ -89,11 +94,11 @@ new Elysia()
     console.error(`[${code}]`, error);
     set.status = 500;
     return { error: 'Erro interno do servidor' };
-  })
+  });
 
-  .listen(PORT);
-
+await runMigrations();
 await runSetup();
+app.listen(PORT);
 startCompatibilityWebhookWorker();
 
 console.log(`🦊  Wppconnect API → http://localhost:${PORT}`);

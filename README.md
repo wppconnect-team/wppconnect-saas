@@ -13,6 +13,24 @@
 
 Plataforma **multi-tenant SaaS** para gerenciamento de sessões WhatsApp. Cada empresa tem um workspace isolado com sessões, contatos, webhooks, tokens e logs próprios. Times compartilham o mesmo workspace com controle de acesso por papel (admin / editor / viewer).
 
+## Control plane compartilhado
+
+O backend mantém a fonte de verdade para organizações (`workspaces`), sessões
+de autenticação, chaves de API, catálogo de produtos e planos, assinaturas,
+entitlements, uso, incidentes e entregas de webhook. Interfaces principais:
+
+- `POST /api/auth/login`, `POST /api/auth/refresh` e `POST /api/auth/logout` —
+  sessão assinada, persistida, revogável e com refresh rotativo;
+- `GET /api/platform/catalog` — catálogo público de produtos e planos ativos;
+- `GET /api/platform/overview` — contexto completo do workspace autenticado;
+- `POST /api/v1/usage/events` — medição idempotente autenticada por chave;
+- `/api/tokens` — chaves armazenadas somente como hash, com escopos, expiração,
+  rotação e revogação.
+
+As migrations são aplicadas pelo backend antes de aceitar tráfego. O checksum
+de uma migration já executada não pode mudar; correções posteriores devem ser
+criadas em um novo arquivo versionado.
+
 ## Stack
 
 | Camada   | Tecnologia                            |

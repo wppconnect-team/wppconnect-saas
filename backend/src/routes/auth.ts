@@ -4,10 +4,17 @@ import { randomBytes } from 'crypto';
 import { sql } from '../db';
 import { checkRateLimit } from '../plugins/rateLimit';
 import { sendPasswordResetEmail } from '../lib/mailer';
+import {
+  ACCESS_SESSION_SECONDS,
+  REFRESH_SESSION_SECONDS,
+  clientIpFromHeaders,
+  createRotationMaterial,
+  createSessionMaterial,
+} from '../lib/authSession';
+import { hashOpaqueToken } from '../lib/platform';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('JWT_SECRET env var is required');
-const JWT_EXPIRES        = 60 * 60 * 24; // 24 horas
 const IS_PROD            = process.env.NODE_ENV === 'production';
 const TURNSTILE_SECRET   = process.env.TURNSTILE_SECRET_KEY ?? '';
 const TURNSTILE_VERIFY   = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
@@ -32,12 +39,81 @@ function makeSlug(name: string): string {
     .slice(0, 80) || 'workspace';
 }
 
+type SessionUser = { id: string; email: string; workspaceId: string };
+
+function setSessionCookies(
+  auth: { set(options: Record<string, unknown>): void },
+  refresh: { set(options: Record<string, unknown>): void },
+  accessToken: string,
+  refreshToken: string
+): void {
+  auth.set({
+    value: accessToken,
+    httpOnly: true,
+    secure: IS_PROD,
+    sameSite: 'strict',
+    maxAge: ACCESS_SESSION_SECONDS,
+    path: '/',
+  });
+  refresh.set({
+    value: refreshToken,
+    httpOnly: true,
+    secure: IS_PROD,
+    sameSite: 'strict',
+    maxAge: REFRESH_SESSION_SECONDS,
+    path: '/api/auth',
+  });
+}
+
+async function issueSession(
+  jwt: { sign(payload: Record<string, string | number>): Promise<string> },
+  auth: { set(options: Record<string, unknown>): void },
+  refresh: { set(options: Record<string, unknown>): void },
+  user: SessionUser,
+  request: Request
+): Promise<void> {
+  const material = createSessionMaterial();
+  const ip = clientIpFromHeaders(request.headers);
+  await sql`
+    INSERT INTO auth_sessions (
+      id, user_id, workspace_id, refresh_token_hash, current_jti,
+      user_agent, ip_address, expires_at
+    ) VALUES (
+      ${material.sessionId}, ${user.id}, ${user.workspaceId},
+      ${material.refreshTokenHash}, ${material.jti},
+      ${request.headers.get('user-agent')}, ${ip}::inet, ${material.expiresAt}
+    )
+  `;
+  const accessToken = await jwt.sign({
+    sub: user.id,
+    email: user.email,
+    wid: user.workspaceId,
+    sid: material.sessionId,
+    jti: material.jti,
+    exp: Math.floor(Date.now() / 1000) + ACCESS_SESSION_SECONDS,
+  });
+  setSessionCookies(auth, refresh, accessToken, material.refreshToken);
+}
+
+async function isPayloadSessionActive(payload: Record<string, unknown>): Promise<boolean> {
+  const [session] = await sql`
+    SELECT id FROM auth_sessions
+    WHERE id = ${String(payload.sid ?? '')}
+      AND user_id = ${String(payload.sub ?? '')}
+      AND workspace_id = ${String(payload.wid ?? '')}
+      AND current_jti = ${String(payload.jti ?? '')}
+      AND revoked_at IS NULL
+      AND expires_at > NOW()
+  `;
+  return Boolean(session);
+}
+
 export const authRoutes = new Elysia({ prefix: '/api/auth' })
   .use(jwt({ name: 'jwt', secret: JWT_SECRET }))
 
   // POST /api/auth/login
   .post('/login',
-    async ({ body, jwt, cookie: { auth }, set, request, server }) => {
+    async ({ body, jwt, cookie: { auth, refresh }, set, request, server }) => {
       const xRealIp = request.headers.get('x-real-ip')?.trim();
       const xForwardedFor = request.headers.get('x-forwarded-for');
       const lastForwardedIp = xForwardedFor?.split(',').at(-1)?.trim();
@@ -80,26 +156,12 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
         return { error: 'Email ou senha inválidos' };
       }
 
-      const token = await jwt.sign({
-        sub:   user.id,
-        email: user.email,
-        wid:   user.workspaceId,
-        exp:   Math.floor(Date.now() / 1000) + JWT_EXPIRES,
-      });
-
-      auth.set({
-        value:    token,
-        httpOnly: true,
-        secure:   IS_PROD,
-        sameSite: 'strict',
-        maxAge:   JWT_EXPIRES,
-        path:     '/',
-      });
+      await issueSession(jwt, auth, refresh, user, request);
 
       return {
         user:               { id: user.id, name: user.name, email: user.email },
         mustChangePassword: user.mustChangePassword,
-        expiresIn:          JWT_EXPIRES,
+        expiresIn:          ACCESS_SESSION_SECONDS,
       };
     },
     {
@@ -117,8 +179,8 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
       const token = auth?.value;
       if (!token) { set.status = 401; return { error: 'Não autenticado' }; }
 
-      const payload = await jwt.verify(token as string);
-      if (!payload) {
+      const payload = await jwt.verify(token as string) as Record<string, unknown> | false;
+      if (!payload || !(await isPayloadSessionActive(payload))) {
         auth.remove();
         set.status = 401;
         return { error: 'Sessão expirada' };
@@ -149,7 +211,7 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
 
   // POST /api/auth/register — cria novo workspace + usuário admin
   .post('/register',
-    async ({ body, jwt, cookie: { auth }, set, request, server }) => {
+    async ({ body, jwt, cookie: { auth, refresh }, set, request, server }) => {
       const xRealIp = request.headers.get('x-real-ip')?.trim();
       const xForwardedFor = request.headers.get('x-forwarded-for');
       const lastForwardedIp = xForwardedFor?.split(',').at(-1)?.trim();
@@ -197,28 +259,18 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
         RETURNING id, name, email
       `;
 
-      const token = await jwt.sign({
-        sub:   user.id,
+      await issueSession(jwt, auth, refresh, {
+        id: user.id,
         email: user.email,
-        wid:   workspace.id,
-        exp:   Math.floor(Date.now() / 1000) + JWT_EXPIRES,
-      });
-
-      auth.set({
-        value:    token,
-        httpOnly: true,
-        secure:   IS_PROD,
-        sameSite: 'strict',
-        maxAge:   JWT_EXPIRES,
-        path:     '/',
-      });
+        workspaceId: workspace.id,
+      }, request);
 
       set.status = 201;
       return {
         user:               { id: user.id, name: user.name, email: user.email },
         workspace:          { id: workspace.id, name: workspaceName, slug },
         mustChangePassword: false,
-        expiresIn:          JWT_EXPIRES,
+        expiresIn:          ACCESS_SESSION_SECONDS,
       };
     },
     {
@@ -236,8 +288,10 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
     async ({ body, cookie: { auth }, jwt, set }) => {
       const token = auth?.value as string | undefined;
       if (!token) { set.status = 401; return { error: 'Não autenticado' }; }
-      const payload = await jwt.verify(token);
-      if (!payload) { auth.remove(); set.status = 401; return { error: 'Sessão expirada' }; }
+      const payload = await jwt.verify(token) as Record<string, unknown> | false;
+      if (!payload || !(await isPayloadSessionActive(payload))) {
+        auth.remove(); set.status = 401; return { error: 'Sessão expirada' };
+      }
 
       const [user] = await sql<{ preferences: Record<string,unknown> }[]>`
         UPDATE users
@@ -256,8 +310,10 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
       const token = auth?.value as string | undefined;
       if (!token) { set.status = 401; return { error: 'Não autenticado' }; }
 
-      const payload = await jwt.verify(token);
-      if (!payload) { auth.remove(); set.status = 401; return { error: 'Sessão expirada' }; }
+      const payload = await jwt.verify(token) as Record<string, unknown> | false;
+      if (!payload || !(await isPayloadSessionActive(payload))) {
+        auth.remove(); set.status = 401; return { error: 'Sessão expirada' };
+      }
 
       const { newPassword } = body;
 
@@ -267,6 +323,13 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
             must_change_password = FALSE,
             member_status        = 'active'
         WHERE id = ${payload.sub as string}
+      `;
+
+      await sql`
+        UPDATE auth_sessions SET revoked_at = NOW()
+        WHERE user_id = ${String(payload.sub)}
+          AND id <> ${String(payload.sid)}
+          AND revoked_at IS NULL
       `;
 
       return { ok: true };
@@ -351,6 +414,11 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
         WHERE id = ${user.id}
       `;
 
+      await sql`
+        UPDATE auth_sessions SET revoked_at = NOW()
+        WHERE user_id = ${user.id} AND revoked_at IS NULL
+      `;
+
       return { ok: true };
     },
     {
@@ -361,10 +429,60 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
     }
   )
 
+  // POST /api/auth/refresh — rotates both the refresh credential and access JWT
+  .post('/refresh', async ({ jwt, cookie: { auth, refresh }, set }) => {
+    const current = refresh?.value as string | undefined;
+    if (!current?.startsWith('wppr_')) {
+      set.status = 401;
+      return { error: 'Sessão de renovação ausente' };
+    }
+
+    const rotation = createRotationMaterial();
+    const [session] = await sql<(SessionUser & { sessionId: string })[]>`
+      UPDATE auth_sessions session
+      SET refresh_token_hash = ${rotation.refreshTokenHash},
+          current_jti = ${rotation.jti},
+          rotated_at = NOW()
+      FROM users user_account
+      WHERE session.refresh_token_hash = ${hashOpaqueToken(current)}
+        AND session.user_id = user_account.id
+        AND session.revoked_at IS NULL
+        AND session.expires_at > NOW()
+      RETURNING session.id AS "sessionId", session.user_id AS id,
+                session.workspace_id AS "workspaceId", user_account.email
+    `;
+    if (!session) {
+      auth.remove();
+      refresh.remove();
+      set.status = 401;
+      return { error: 'Sessão de renovação inválida ou já utilizada' };
+    }
+
+    const accessToken = await jwt.sign({
+      sub: session.id,
+      email: session.email,
+      wid: session.workspaceId,
+      sid: session.sessionId,
+      jti: rotation.jti,
+      exp: Math.floor(Date.now() / 1000) + ACCESS_SESSION_SECONDS,
+    });
+    setSessionCookies(auth, refresh, accessToken, rotation.refreshToken);
+    return { expiresIn: ACCESS_SESSION_SECONDS };
+  })
+
   // POST /api/auth/logout
   .post('/logout',
-    ({ cookie: { auth }, set }) => {
+    async ({ cookie: { auth, refresh }, set }) => {
+      const current = refresh?.value as string | undefined;
+      if (current) {
+        await sql`
+          UPDATE auth_sessions SET revoked_at = NOW()
+          WHERE refresh_token_hash = ${hashOpaqueToken(current)}
+            AND revoked_at IS NULL
+        `;
+      }
       auth.remove();
+      refresh.remove();
       set.status = 204;
       return null;
     }

@@ -10,6 +10,58 @@ permissions:
   contents: read
 
 jobs:
+  migrations:
+    name: PostgreSQL migration smoke
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: wppconnect
+          POSTGRES_PASSWORD: test-password
+          POSTGRES_DB: wppconnect
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U wppconnect -d wppconnect"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGPASSWORD: test-password
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 'latest'
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: bun install --frozen-lockfile
+
+      - name: Apply complete migration chain
+        run: |
+          for migration in backend/migrations/*.sql; do
+            echo "Applying ${migration}"
+            psql --set ON_ERROR_STOP=1 \
+              --host 127.0.0.1 --username wppconnect --dbname wppconnect \
+              --file "${migration}"
+          done
+
+      - name: Assert platform schema
+        run: |
+          psql --set ON_ERROR_STOP=1 \
+            --host 127.0.0.1 --username wppconnect --dbname wppconnect <<'SQL'
+          SELECT 1 / CASE WHEN COUNT(*) = 5 THEN 1 ELSE 0 END FROM products;
+          SELECT 1 / CASE WHEN COUNT(*) = 4 THEN 1 ELSE 0 END FROM product_plans;
+          SELECT 1 / CASE WHEN to_regclass('public.auth_sessions') IS NOT NULL THEN 1 ELSE 0 END;
+          SELECT 1 / CASE WHEN to_regclass('public.usage_events') IS NOT NULL THEN 1 ELSE 0 END;
+          SQL
+
+      - name: Exercise the control-plane interfaces
+        run: bash .github/scripts/platform-smoke.sh
+
   frontend:
     name: Frontend build
     runs-on: ubuntu-latest

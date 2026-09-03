@@ -43,9 +43,14 @@ DECLARE
   v_billing      TEXT;
   v_renews_at    DATE;
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM users LIMIT 1) THEN
+  IF NOT EXISTS (SELECT 1 FROM users WHERE workspace_id IS NULL LIMIT 1) THEN
     RETURN;
   END IF;
+
+  SELECT id INTO v_workspace_id
+  FROM workspaces
+  WHERE slug = 'workspace-principal'
+  LIMIT 1;
 
   SELECT
     COALESCE(name, 'Workspace Principal'),
@@ -64,15 +69,17 @@ BEGIN
     FROM users ORDER BY created_at ASC LIMIT 1;
   END IF;
 
-  INSERT INTO workspaces (name, slug, plan_slug, billing_cycle, plan_renews_at)
-  VALUES (
-    v_name || ' Workspace',
-    'workspace-principal',
-    v_plan_slug,
-    v_billing,
-    v_renews_at
-  )
-  RETURNING id INTO v_workspace_id;
+  IF v_workspace_id IS NULL THEN
+    INSERT INTO workspaces (name, slug, plan_slug, billing_cycle, plan_renews_at)
+    VALUES (
+      v_name || ' Workspace',
+      'workspace-principal',
+      v_plan_slug,
+      v_billing,
+      v_renews_at
+    )
+    RETURNING id INTO v_workspace_id;
+  END IF;
 
   UPDATE users      SET workspace_id = v_workspace_id WHERE workspace_id IS NULL;
   UPDATE sessions   SET workspace_id = v_workspace_id WHERE workspace_id IS NULL;

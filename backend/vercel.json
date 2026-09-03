@@ -17,6 +17,10 @@
     {
       "path": "/api/internal/compatibility/deliveries/drain",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/internal/telemetry/retention",
+      "schedule": "0 3 * * *"
     }
   ]
 }

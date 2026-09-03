@@ -3,9 +3,10 @@ set -euo pipefail
 
 cookie_jar="$(mktemp)"
 server_log="$(mktemp)"
+telemetry_payload="$(mktemp)"
 cleanup() {
   if [[ -n "${server_pid:-}" ]]; then kill "${server_pid}" 2>/dev/null || true; fi
-  rm -f "${cookie_jar}" "${server_log}"
+  rm -f "${cookie_jar}" "${server_log}" "${telemetry_payload}"
 }
 trap cleanup EXIT
 
@@ -18,6 +19,7 @@ export WPP_SECRET_KEY="platform-smoke-wpp-secret"
 export COMPATIBILITY_INGEST_SECRET="platform-smoke-ingest-secret"
 export WEBHOOK_ENCRYPTION_KEY="$(openssl rand -base64 32)"
 export COMPATIBILITY_WEBHOOK_POLL_MS="60000"
+export CRON_SECRET="platform-smoke-cron-secret"
 
 (
   cd backend
@@ -50,7 +52,7 @@ curl --fail --silent --show-error \
 
 token_response="$(curl --fail --silent --show-error --cookie "${cookie_jar}" \
   --header 'content-type: application/json' \
-  --data '{"name":"Smoke key","scopes":["usage:write"]}' \
+  --data '{"name":"Smoke key","scopes":["usage:write","telemetry:write"]}' \
   http://127.0.0.1:3000/api/tokens/)"
 token_id="$(jq -r '.data.id' <<<"${token_response}")"
 api_key="$(jq -r '.token' <<<"${token_response}")"
@@ -66,6 +68,30 @@ curl --fail --silent --show-error --header "authorization: Bearer ${api_key}" \
 curl --fail --silent --show-error --header "authorization: Bearer ${api_key}" \
   --header 'content-type: application/json' --data "${usage_body}" \
   http://127.0.0.1:3000/api/v1/usage/events | jq -e '.duplicate == true'
+
+telemetry_body='{"schemaVersion":"1","snapshots":[{"schemaVersion":"1","idempotencyKey":"platform-telemetry-1","sourceId":"smoke-node","sdkVersion":"0.1.0","waVersion":"2.3000.1","observedFrom":"2026-09-03T10:00:00.000Z","observedTo":"2026-09-03T10:01:00.000Z","counters":{"messages.sent":4,"messages.received":3,"messages.deleted":1,"errors.total":2},"responseLatency":{"sumMs":1200,"count":4},"availability":{"connectedSeconds":58,"observedSeconds":60},"functions":[{"name":"sendText","calls":4,"errors":1,"durationMsSum":900}]}]}'
+printf '%s' "${telemetry_body}" | gzip -c >"${telemetry_payload}"
+curl --fail --silent --show-error --header "authorization: Bearer ${api_key}" \
+  --header 'content-type: application/octet-stream' --header 'content-encoding: gzip' \
+  --data-binary "@${telemetry_payload}" \
+  http://127.0.0.1:3000/api/v1/telemetry/snapshots | jq -e '.accepted == 1 and .duplicates == 0'
+curl --fail --silent --show-error --header "authorization: Bearer ${api_key}" \
+  --header 'content-type: application/json' --data "${telemetry_body}" \
+  http://127.0.0.1:3000/api/v1/telemetry/snapshots | jq -e '.accepted == 0 and .duplicates == 1'
+curl --fail --silent --show-error --cookie "${cookie_jar}" \
+  'http://127.0.0.1:3000/api/telemetry/summary?days=365' \
+  | jq -e '.data.messages.sent == 4 and .data.messages.deleted == 1 and .data.averageResponseMs == 300'
+curl --fail --silent --show-error --cookie "${cookie_jar}" --request PUT \
+  --header 'content-type: application/json' --data '{"retentionDays":14}' \
+  http://127.0.0.1:3000/api/telemetry/settings | jq -e '.data.retentionDays == 14'
+curl --fail --silent --show-error --cookie "${cookie_jar}" \
+  'http://127.0.0.1:3000/api/telemetry/export?days=365' | jq -e '.data | length == 1'
+
+retention_unauthorized="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+  http://127.0.0.1:3000/api/internal/telemetry/retention)"
+test "${retention_unauthorized}" = "401"
+curl --fail --silent --show-error --header "authorization: Bearer ${CRON_SECRET}" \
+  http://127.0.0.1:3000/api/internal/telemetry/retention | jq -e '.deleted == 0'
 
 app_response="$(curl --fail --silent --show-error --cookie "${cookie_jar}" \
   --header 'content-type: application/json' \
@@ -146,4 +172,4 @@ logged_out_status="$(curl --silent --output /dev/null --write-out '%{http_code}'
   --cookie "${cookie_jar}" http://127.0.0.1:3000/api/platform/overview)"
 test "${logged_out_status}" = "401"
 
-echo 'Platform smoke passed: sessions, API keys, usage, and the complete extension-license lifecycle.'
+echo 'Platform smoke passed: sessions, API keys, usage, privacy-safe telemetry, retention, and the complete extension-license lifecycle.'

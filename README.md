@@ -49,6 +49,24 @@ docker compose --profile media up -d --build
 O perfil é opt-in para não obrigar instalações existentes a provisionar
 armazenamento e segredos de mídia.
 
+## Telemetria opt-in
+
+O pacote `@wppconnect/telemetry-sdk` é separado do WA-JS e não coleta nada ao
+ser importado. A aplicação hospedeira precisa configurá-lo e registrar apenas
+contadores agregados, latência, disponibilidade e resultados de funções. O
+contrato fechado rejeita campos de conteúdo, telefone, nome, JID, mídia e URL.
+
+O SDK agrupa snapshots, comprime com gzip quando disponível e preserva lotes
+offline com a mesma chave de idempotência. O control plane oferece:
+
+- `POST /api/v1/telemetry/snapshots` com escopo `telemetry:write`;
+- `GET /api/telemetry/summary` para mensagens, exclusões, erros, latência,
+  disponibilidade e funções afetadas;
+- `GET /api/telemetry/export` e `GET/PUT /api/telemetry/settings`;
+- retenção automática por workspace, configurável entre 1 e 365 dias.
+
+Nenhum conteúdo de conversa ou identificador de usuário faz parte do schema.
+
 ## Stack
 
 | Camada   | Tecnologia                            |

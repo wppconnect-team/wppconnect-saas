@@ -1,5 +1,5 @@
 import { createHash } from 'crypto';
-import { readdir, readFile } from 'fs/promises';
+import { access, readdir, readFile } from 'fs/promises';
 import { join } from 'path';
 import type postgres from 'postgres';
 
@@ -30,19 +30,20 @@ export async function applyMigrationPlan(
   db: postgres.Sql,
   plan: MigrationFile[]
 ): Promise<string[]> {
-  await db`
-    CREATE TABLE IF NOT EXISTS schema_migrations (
-      name VARCHAR(255) PRIMARY KEY,
-      checksum CHAR(64) NOT NULL,
-      applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `;
-
   const applied: string[] = [];
-  await db`SELECT pg_advisory_lock(${MIGRATION_LOCK_KEY})`;
-  try {
+  await db.begin(async (transaction) => {
+    const tx = transaction as unknown as postgres.Sql;
+    await tx`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        name VARCHAR(255) PRIMARY KEY,
+        checksum CHAR(64) NOT NULL,
+        applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `;
+    await tx`SELECT pg_advisory_xact_lock(${MIGRATION_LOCK_KEY})`;
+
     for (const migration of plan) {
-      const [existing] = await db<{ checksum: string }[]>`
+      const [existing] = await tx<{ checksum: string }[]>`
         SELECT checksum FROM schema_migrations WHERE name = ${migration.name}
       `;
       if (existing) {
@@ -52,26 +53,38 @@ export async function applyMigrationPlan(
         continue;
       }
 
-      await db.begin(async (transaction) => {
-        const tx = transaction as unknown as postgres.Sql;
-        await tx.unsafe(migration.sql).simple();
-        await tx`
-          INSERT INTO schema_migrations (name, checksum)
-          VALUES (${migration.name}, ${migration.checksum})
-        `;
-      });
+      await tx.unsafe(migration.sql).simple();
+      await tx`
+        INSERT INTO schema_migrations (name, checksum)
+        VALUES (${migration.name}, ${migration.checksum})
+      `;
       applied.push(migration.name);
     }
-  } finally {
-    await db`SELECT pg_advisory_unlock(${MIGRATION_LOCK_KEY})`;
-  }
+  });
 
   return applied;
 }
 
+async function resolveMigrationDirectory(): Promise<string> {
+  const candidates = [
+    join(import.meta.dir, '..', '..', 'migrations'),
+    join(process.cwd(), 'migrations'),
+    join(process.cwd(), 'backend', 'migrations'),
+  ];
+  for (const candidate of candidates) {
+    try {
+      await access(candidate);
+      return candidate;
+    } catch {
+      // Try the next layout (local source tree, Vercel bundle, monorepo root).
+    }
+  }
+  throw new Error(`Migration directory not found in: ${candidates.join(', ')}`);
+}
+
 export async function runMigrations(): Promise<string[]> {
   const { sql } = await import('../db');
-  const directory = join(import.meta.dir, '..', '..', 'migrations');
+  const directory = await resolveMigrationDirectory();
   const plan = await loadMigrationPlan(directory);
   const applied = await applyMigrationPlan(sql, plan);
   if (applied.length > 0) {

@@ -104,7 +104,10 @@ const app = new Elysia()
 
 await runMigrations();
 await runSetup();
-app.listen(PORT);
-startCompatibilityWebhookWorker();
+if (process.env.VERCEL !== '1') {
+  app.listen(PORT);
+  startCompatibilityWebhookWorker();
+  console.log(`🦊  Wppconnect API → http://localhost:${PORT}`);
+}
 
-console.log(`🦊  Wppconnect API → http://localhost:${PORT}`);
+export default app;

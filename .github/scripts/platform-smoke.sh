@@ -54,6 +54,10 @@ token_response="$(curl --fail --silent --show-error --cookie "${cookie_jar}" \
 token_id="$(jq -r '.data.id' <<<"${token_response}")"
 api_key="$(jq -r '.token' <<<"${token_response}")"
 
+curl --fail --silent --show-error --header "authorization: Bearer ${api_key}" \
+  'http://127.0.0.1:3000/api/v1/auth/context?required=usage%3Awrite' \
+  | jq -e '.workspaceId and (.scopes | index("usage:write"))'
+
 usage_body='{"schemaVersion":"1","idempotencyKey":"platform-smoke-event-1","product":"compatibility-monitor","meter":"webhook.delivery","quantity":1,"occurredAt":"2026-09-03T00:00:00.000Z"}'
 curl --fail --silent --show-error --header "authorization: Bearer ${api_key}" \
   --header 'content-type: application/json' --data "${usage_body}" \

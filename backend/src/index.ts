@@ -14,7 +14,12 @@ import { groupRoutes }     from './routes/groups';
 import { memberRoutes }    from './routes/members';
 import { planRoutes }      from './routes/plan';
 import { compatibilityRoutes, internalCompatibilityRoutes } from './routes/compatibility';
-import { platformRoutes, publicPlatformRoutes, usageIngestRoutes } from './routes/platform';
+import {
+  apiAuthenticationRoutes,
+  platformRoutes,
+  publicPlatformRoutes,
+  usageIngestRoutes,
+} from './routes/platform';
 import { runSetup }        from './lib/setup';
 import { runMigrations }   from './lib/migrations';
 import { startCompatibilityWebhookWorker } from './workers/compatibilityWebhookWorker';
@@ -77,6 +82,7 @@ const app = new Elysia()
   .use(logRoutes)
   .use(publicPlatformRoutes)
   .use(platformRoutes)
+  .use(apiAuthenticationRoutes)
   .use(usageIngestRoutes)
   .use(compatibilityRoutes)
   .use(internalCompatibilityRoutes)

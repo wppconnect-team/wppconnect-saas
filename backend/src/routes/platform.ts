@@ -148,3 +148,21 @@ export const usageIngestRoutes = new Elysia({ prefix: '/api/v1/usage' })
       occurredAt: t.String({ format: 'date-time' }),
     }),
   });
+
+export const apiAuthenticationRoutes = new Elysia({ prefix: '/api/v1/auth' })
+  .use(apiKeyPlugin)
+  .get('/context', ({ apiTokenId, apiWorkspaceId, apiScopes, query, set }) => {
+    if (query.required && !grantsScope(apiScopes, query.required)) {
+      set.status = 403;
+      return { error: `A chave não possui o escopo ${query.required}` };
+    }
+    return {
+      tokenId: apiTokenId,
+      workspaceId: apiWorkspaceId,
+      scopes: apiScopes,
+    };
+  }, {
+    query: t.Object({
+      required: t.Optional(t.String({ minLength: 1, maxLength: 120 })),
+    }),
+  });

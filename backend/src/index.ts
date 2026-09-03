@@ -23,6 +23,7 @@ import {
 import { runSetup }        from './lib/setup';
 import { runMigrations }   from './lib/migrations';
 import { startCompatibilityWebhookWorker } from './workers/compatibilityWebhookWorker';
+import { licensingRoutes, publicLicensingRoutes } from './routes/licensing';
 
 const PORT = Number(process.env.PORT ?? 3000);
 
@@ -86,6 +87,8 @@ const app = new Elysia()
   .use(usageIngestRoutes)
   .use(compatibilityRoutes)
   .use(internalCompatibilityRoutes)
+  .use(licensingRoutes)
+  .use(publicLicensingRoutes)
 
   // Erro global
   .onError(({ code, error, set }) => {

@@ -67,6 +67,55 @@ curl --fail --silent --show-error --header "authorization: Bearer ${api_key}" \
   --header 'content-type: application/json' --data "${usage_body}" \
   http://127.0.0.1:3000/api/v1/usage/events | jq -e '.duplicate == true'
 
+app_response="$(curl --fail --silent --show-error --cookie "${cookie_jar}" \
+  --header 'content-type: application/json' \
+  --data '{"name":"Smoke Extension","offlineGraceSeconds":3600}' \
+  http://127.0.0.1:3000/api/licensing/apps)"
+app_id="$(jq -r '.data.id' <<<"${app_response}")"
+jq -e '.data.publicKey | startswith("-----BEGIN PUBLIC KEY-----")' <<<"${app_response}"
+
+plan_response="$(curl --fail --silent --show-error --cookie "${cookie_jar}" \
+  --header 'content-type: application/json' \
+  --data '{"slug":"pro","name":"Pro","currency":"USD","unitAmount":1900,"billingInterval":"month","entitlements":{"export":true},"limits":{"devices":1}}' \
+  http://127.0.0.1:3000/api/licensing/apps/${app_id}/plans)"
+plan_id="$(jq -r '.data.id' <<<"${plan_response}")"
+
+license_response="$(curl --fail --silent --show-error --cookie "${cookie_jar}" \
+  --header 'content-type: application/json' \
+  --data "{\"planId\":\"${plan_id}\",\"maxInstallations\":1}" \
+  http://127.0.0.1:3000/api/licensing/apps/${app_id}/licenses)"
+license_id="$(jq -r '.data.id' <<<"${license_response}")"
+license_key="$(jq -r '.licenseKey' <<<"${license_response}")"
+
+activation_body="{\"appId\":\"${app_id}\",\"licenseKey\":\"${license_key}\",\"installationId\":\"smoke-device-one\"}"
+curl --fail --silent --show-error --header 'content-type: application/json' --data "${activation_body}" \
+  http://127.0.0.1:3000/api/v1/licenses/activate | jq -e '.valid == true and (.token | length > 100)'
+curl --fail --silent --show-error --header 'content-type: application/json' --data "${activation_body}" \
+  http://127.0.0.1:3000/api/v1/licenses/verify | jq -e '.valid == true'
+
+second_activation_body="{\"appId\":\"${app_id}\",\"licenseKey\":\"${license_key}\",\"installationId\":\"smoke-device-two\"}"
+second_activation_status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+  --header 'content-type: application/json' --data "${second_activation_body}" \
+  http://127.0.0.1:3000/api/v1/licenses/activate)"
+test "${second_activation_status}" = "409"
+
+curl --fail --silent --show-error --header 'content-type: application/json' --data "${activation_body}" \
+  http://127.0.0.1:3000/api/v1/licenses/heartbeat | jq -e '.valid == true'
+curl --fail --silent --show-error --header 'content-type: application/json' --data "${activation_body}" \
+  http://127.0.0.1:3000/api/v1/licenses/deactivate | jq -e '.deactivated == true'
+deactivated_verify_status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+  --header 'content-type: application/json' --data "${activation_body}" \
+  http://127.0.0.1:3000/api/v1/licenses/verify)"
+test "${deactivated_verify_status}" = "403"
+
+curl --fail --silent --show-error --cookie "${cookie_jar}" --header 'content-type: application/json' \
+  --data '{"status":"revoked"}' \
+  http://127.0.0.1:3000/api/licensing/licenses/${license_id}/status | jq -e '.data.status == "revoked"'
+revoked_license_status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+  --header 'content-type: application/json' --data "${activation_body}" \
+  http://127.0.0.1:3000/api/v1/licenses/activate)"
+test "${revoked_license_status}" = "403"
+
 rotate_response="$(curl --fail --silent --show-error --cookie "${cookie_jar}" \
   --request POST http://127.0.0.1:3000/api/tokens/${token_id}/rotate)"
 rotated_id="$(jq -r '.data.id' <<<"${rotate_response}")"
@@ -97,4 +146,4 @@ logged_out_status="$(curl --silent --output /dev/null --write-out '%{http_code}'
   --cookie "${cookie_jar}" http://127.0.0.1:3000/api/platform/overview)"
 test "${logged_out_status}" = "401"
 
-echo 'Platform smoke passed: session rotation, catalog, overview, API-key rotation/revocation, and idempotent usage.'
+echo 'Platform smoke passed: sessions, API keys, usage, and the complete extension-license lifecycle.'

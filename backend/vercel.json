@@ -2,10 +2,17 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "bunVersion": "1.x",
   "functions": {
-    "src/index.ts": {
-      "includeFiles": "migrations/**"
+    "api/index.ts": {
+      "includeFiles": "migrations/**",
+      "maxDuration": 60
     }
   },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/api"
+    }
+  ],
   "crons": [
     {
       "path": "/api/internal/compatibility/deliveries/drain",

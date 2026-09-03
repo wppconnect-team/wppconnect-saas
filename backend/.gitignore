@@ -29,3 +29,7 @@ postgres_data/
 
 # npm lockfile é redundante com bun.lock
 package-lock.json
+
+.vercel/
+.env.local
+.env.*.local

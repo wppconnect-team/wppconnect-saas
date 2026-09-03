@@ -46,7 +46,8 @@ INSERT INTO users (id, name, email, password) VALUES
 
 INSERT INTO subscriptions (id, user_id, api_type, stripe_subscription_id, stripe_customer_id, status, price_amount) VALUES
   ('20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'evolution', 'sub_legacy_one', 'cus_legacy_one', 'active', 3500),
-  ('20000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000002', 'wuzapi', 'sub_legacy_two', 'cus_legacy_two', 'canceled', 2500);
+  ('20000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000002', 'wuzapi', 'sub_legacy_two', 'cus_legacy_two', 'canceled', 2500),
+  ('20000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000001', 'wppconnect', 'sub_legacy_old', 'cus_legacy_one', 'canceled', 4500);
 
 INSERT INTO api_keys (id, user_id, subscription_id, api_key, api_type, is_active) VALUES
   ('30000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'wpp_live_legacy-one', 'evolution', TRUE),
@@ -61,8 +62,8 @@ done
 psql --set ON_ERROR_STOP=1 "${connection[@]}" <<'SQL'
 SELECT 1 / CASE WHEN COUNT(*) = 2 AND COUNT(DISTINCT workspace_id) = 2 THEN 1 ELSE 0 END FROM users;
 SELECT 1 / CASE WHEN COUNT(*) = 2 THEN 1 ELSE 0 END FROM workspaces WHERE slug LIKE 'cloud-%';
-SELECT 1 / CASE WHEN COUNT(*) = 2 THEN 1 ELSE 0 END FROM workspace_subscriptions;
-SELECT 1 / CASE WHEN COUNT(*) = 1 THEN 1 ELSE 0 END FROM workspace_subscriptions WHERE status = 'cancelled';
+SELECT 1 / CASE WHEN COUNT(*) = 3 THEN 1 ELSE 0 END FROM workspace_subscriptions;
+SELECT 1 / CASE WHEN COUNT(*) = 2 THEN 1 ELSE 0 END FROM workspace_subscriptions WHERE status = 'cancelled';
 SELECT 1 / CASE WHEN COUNT(*) = 2 THEN 1 ELSE 0 END FROM product_entitlements WHERE product = 'cloud-runtime';
 SELECT 1 / CASE WHEN COUNT(*) = 1 THEN 1 ELSE 0 END FROM product_entitlements WHERE product = 'cloud-runtime' AND status = 'active';
 SELECT 1 / CASE WHEN COUNT(*) = 2 THEN 1 ELSE 0 END FROM api_tokens;

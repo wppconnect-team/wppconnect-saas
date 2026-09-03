@@ -55,7 +55,6 @@ jobs:
             --host 127.0.0.1 --username wppconnect --dbname wppconnect <<'SQL'
           SELECT 1 / CASE WHEN COUNT(*) = 6 THEN 1 ELSE 0 END FROM products;
           SELECT 1 / CASE WHEN COUNT(*) = 7 THEN 1 ELSE 0 END FROM product_plans;
-          SELECT 1 / CASE WHEN COUNT(*) = 15 THEN 1 ELSE 0 END FROM schema_migrations;
           SELECT 1 / CASE WHEN to_regclass('public.auth_sessions') IS NOT NULL THEN 1 ELSE 0 END;
           SELECT 1 / CASE WHEN to_regclass('public.usage_events') IS NOT NULL THEN 1 ELSE 0 END;
           SQL

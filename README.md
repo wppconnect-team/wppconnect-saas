@@ -103,6 +103,19 @@ workaround. Não contém, baixa nem executa JavaScript remoto.
 Consumidores devem verificar o token, expiração e nome do pacote antes de usar
 as flags. Texto e URLs são somente informativos e nunca devem ser executados.
 
+## Licenciamento de extensões
+
+O módulo mantém apps, planos, licenças e instalações por workspace. Chaves são
+armazenadas somente como hash; o SDK recebe credenciais Ed25519 curtas, com
+entitlements, expiração, revogação e tolerância offline configurável.
+
+Apps `sandbox` podem exercitar compra, renovação, inadimplência, cancelamento,
+reembolso e disputa por `POST /api/licensing/licenses/{id}/sandbox-events`.
+Cada evento é idempotente e auditável; o histórico está em
+`GET /api/licensing/licenses/{id}/billing-events`. Esses eventos não movimentam
+dinheiro nem fingem ser webhooks Stripe. Stripe Connect permanece condicionado
+ao modelo de charge/repasse, KYC, termos, reserva para disputas e conciliação.
+
 ## Stack
 
 | Camada   | Tecnologia                            |

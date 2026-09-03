@@ -11,11 +11,28 @@ import {
   type LicenseClaims,
 } from '../lib/licensing';
 import { hashOpaqueToken } from '../lib/platform';
+import {
+  resolveSandboxBillingEvent,
+  type LicenseBillingStatus,
+  type SandboxBillingEventType,
+} from '../lib/licenseBilling';
 
 type LicenseRow = {
   id: string; appId: string; planId: string; status: string; expiresAt: Date | null;
   maxInstallations: number; entitlements: Record<string, unknown>; limits: Record<string, unknown>;
   encryptedPrivateKey: string; offlineGraceSeconds: number;
+};
+
+type BillingLicenseRow = {
+  id: string; appId: string; appStatus: string; status: LicenseBillingStatus;
+  expiresAt: Date | null; billingInterval: 'month' | 'year';
+};
+
+type BillingEventRow = {
+  id: string; licenseId: string; eventType: SandboxBillingEventType;
+  previousStatus: LicenseBillingStatus; resultingStatus: LicenseBillingStatus;
+  previousExpiresAt: Date | null; resultingExpiresAt: Date | null;
+  occurredAt: Date; createdAt: Date;
 };
 
 function slugify(value: string): string {
@@ -186,7 +203,107 @@ export const licensingRoutes = new Elysia({ prefix: '/api/licensing' })
   }, { body: t.Object({ status: t.Union([
     t.Literal('active'), t.Literal('past_due'), t.Literal('cancelled'),
     t.Literal('refunded'), t.Literal('disputed'), t.Literal('revoked'),
-  ]) }) });
+  ]) }) })
+  .get('/licenses/:licenseId/billing-events', async ({ params, workspaceId, set }) => {
+    const [license] = await sql`
+      SELECT license.id FROM extension_licenses license
+      JOIN extension_apps app ON app.id = license.app_id
+      WHERE license.id = ${params.licenseId} AND app.workspace_id = ${workspaceId}
+    `;
+    if (!license) { set.status = 404; return { error: 'Licença não encontrada' }; }
+    return { data: await sql`
+      SELECT id, event_type AS "eventType", previous_status AS "previousStatus",
+             resulting_status AS "resultingStatus", previous_expires_at AS "previousExpiresAt",
+             resulting_expires_at AS "resultingExpiresAt", occurred_at AS "occurredAt",
+             metadata, created_at AS "createdAt"
+      FROM extension_license_billing_events WHERE license_id = ${params.licenseId}
+      ORDER BY occurred_at DESC, created_at DESC
+      LIMIT 200
+    ` };
+  })
+  .post('/licenses/:licenseId/sandbox-events', async ({ params, body, workspaceId, set }) => {
+    const occurredAt = body.occurredAt ? new Date(body.occurredAt) : new Date();
+    const result = await sql.begin(async (transaction) => {
+      const tx = transaction as unknown as postgres.Sql;
+      await tx`SELECT pg_advisory_xact_lock(hashtext(${`${workspaceId}:${params.licenseId}`}))`;
+      await tx`SELECT pg_advisory_xact_lock(hashtext(${`${workspaceId}:${body.idempotencyKey}`}))`;
+      const [license] = await tx<BillingLicenseRow[]>`
+        SELECT license.id, license.app_id AS "appId", app.status AS "appStatus",
+               license.status, license.expires_at AS "expiresAt",
+               plan.billing_interval AS "billingInterval"
+        FROM extension_licenses license
+        JOIN extension_apps app ON app.id = license.app_id
+        JOIN extension_plans plan ON plan.id = license.plan_id
+        WHERE license.id = ${params.licenseId} AND app.workspace_id = ${workspaceId}
+        FOR UPDATE OF license
+      `;
+      if (!license) return { kind: 'not-found' as const };
+      if (license.appStatus !== 'sandbox') return { kind: 'not-sandbox' as const };
+
+      const [existing] = await tx<BillingEventRow[]>`
+        SELECT id, license_id AS "licenseId", event_type AS "eventType",
+               previous_status AS "previousStatus", resulting_status AS "resultingStatus",
+               previous_expires_at AS "previousExpiresAt",
+               resulting_expires_at AS "resultingExpiresAt", occurred_at AS "occurredAt",
+               created_at AS "createdAt"
+        FROM extension_license_billing_events
+        WHERE app_id = ${license.appId} AND idempotency_key = ${body.idempotencyKey}
+      `;
+      if (existing) {
+        if (existing.licenseId !== license.id || existing.eventType !== body.eventType) {
+          return { kind: 'conflict' as const };
+        }
+        return { kind: 'ok' as const, duplicate: true, event: existing };
+      }
+      if (license.status === 'revoked') return { kind: 'revoked' as const };
+
+      const transition = resolveSandboxBillingEvent({
+        eventType: body.eventType,
+        currentExpiresAt: license.expiresAt, occurredAt,
+        billingInterval: license.billingInterval,
+      });
+      await tx`
+        UPDATE extension_licenses
+        SET status = ${transition.status}, expires_at = ${transition.expiresAt}, updated_at = NOW()
+        WHERE id = ${license.id}
+      `;
+      const [event] = await tx<BillingEventRow[]>`
+        INSERT INTO extension_license_billing_events
+          (app_id, license_id, idempotency_key, event_type, previous_status, resulting_status,
+           previous_expires_at, resulting_expires_at, occurred_at, metadata)
+        VALUES (${license.appId}, ${license.id}, ${body.idempotencyKey}, ${body.eventType},
+                ${license.status}, ${transition.status}, ${license.expiresAt}, ${transition.expiresAt},
+                ${occurredAt}, ${tx.json((body.metadata ?? {}) as Parameters<typeof sql.json>[0])})
+        RETURNING id, license_id AS "licenseId", event_type AS "eventType",
+                  previous_status AS "previousStatus", resulting_status AS "resultingStatus",
+                  previous_expires_at AS "previousExpiresAt",
+                  resulting_expires_at AS "resultingExpiresAt", occurred_at AS "occurredAt",
+                  created_at AS "createdAt"
+      `;
+      await audit(tx, license.appId, license.id, null, `billing.${body.eventType}`, 'sandbox', {
+        idempotencyKey: body.idempotencyKey,
+        previousStatus: license.status,
+        resultingStatus: transition.status,
+      });
+      return { kind: 'ok' as const, duplicate: false, event };
+    });
+
+    if (result.kind === 'not-found') { set.status = 404; return { error: 'Licença não encontrada' }; }
+    if (result.kind === 'not-sandbox') { set.status = 409; return { error: 'Eventos simulados são permitidos apenas em apps sandbox' }; }
+    if (result.kind === 'revoked') { set.status = 409; return { error: 'Licença revogada não pode ser reativada por billing' }; }
+    if (result.kind === 'conflict') { set.status = 409; return { error: 'Chave de idempotência já usada por outro evento' }; }
+    set.status = result.duplicate ? 200 : 201;
+    return { data: result.event, duplicate: result.duplicate };
+  }, { body: t.Object({
+    idempotencyKey: t.String({ minLength: 8, maxLength: 200 }),
+    eventType: t.Union([
+      t.Literal('purchase.completed'), t.Literal('renewal.succeeded'),
+      t.Literal('payment.failed'), t.Literal('subscription.cancelled'),
+      t.Literal('refund.completed'), t.Literal('dispute.opened'),
+    ]),
+    occurredAt: t.Optional(t.String({ format: 'date-time' })),
+    metadata: t.Optional(t.Record(t.String({ maxLength: 80 }), t.Unknown())),
+  }) });
 
 const licenseRequest = t.Object({
   appId: t.String({ format: 'uuid' }),

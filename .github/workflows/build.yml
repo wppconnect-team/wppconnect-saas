@@ -62,6 +62,7 @@ jobs:
           SELECT 1 / CASE WHEN to_regclass('public.telemetry_snapshots') IS NOT NULL THEN 1 ELSE 0 END;
           SELECT 1 / CASE WHEN to_regclass('public.catalog_sync_runs') IS NOT NULL THEN 1 ELSE 0 END;
           SELECT 1 / CASE WHEN to_regclass('public.compatibility_manifests') IS NOT NULL THEN 1 ELSE 0 END;
+          SELECT 1 / CASE WHEN to_regclass('public.extension_license_billing_events') IS NOT NULL THEN 1 ELSE 0 END;
           SQL
 
       - name: Exercise migration from the legacy Cloud schema

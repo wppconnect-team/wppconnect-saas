@@ -162,6 +162,70 @@ plan_response="$(curl --fail --silent --show-error --cookie "${cookie_jar}" \
   http://127.0.0.1:3000/api/licensing/apps/${app_id}/plans)"
 plan_id="$(jq -r '.data.id' <<<"${plan_response}")"
 
+billing_license_response="$(curl --fail --silent --show-error --cookie "${cookie_jar}" \
+  --header 'content-type: application/json' \
+  --data "{\"planId\":\"${plan_id}\",\"externalCustomerId\":\"sandbox-customer-1\"}" \
+  http://127.0.0.1:3000/api/licensing/apps/${app_id}/licenses)"
+billing_license_id="$(jq -r '.data.id' <<<"${billing_license_response}")"
+billing_license_key="$(jq -r '.licenseKey' <<<"${billing_license_response}")"
+
+purchase_body='{"idempotencyKey":"sandbox-purchase-1","eventType":"purchase.completed","occurredAt":"2027-01-31T12:00:00.000Z"}'
+curl --fail --silent --show-error --cookie "${cookie_jar}" --header 'content-type: application/json' \
+  --data "${purchase_body}" \
+  http://127.0.0.1:3000/api/licensing/licenses/${billing_license_id}/sandbox-events \
+  | jq -e '.duplicate == false and .data.resultingStatus == "active" and (.data.resultingExpiresAt | startswith("2027-02-28T12:00:00"))'
+curl --fail --silent --show-error --cookie "${cookie_jar}" --header 'content-type: application/json' \
+  --data "${purchase_body}" \
+  http://127.0.0.1:3000/api/licensing/licenses/${billing_license_id}/sandbox-events \
+  | jq -e '.duplicate == true and .data.eventType == "purchase.completed"'
+idempotency_conflict_status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+  --cookie "${cookie_jar}" --header 'content-type: application/json' \
+  --data '{"idempotencyKey":"sandbox-purchase-1","eventType":"payment.failed"}' \
+  http://127.0.0.1:3000/api/licensing/licenses/${billing_license_id}/sandbox-events)"
+test "${idempotency_conflict_status}" = "409"
+
+post_sandbox_event() {
+  local event_key="$1"
+  local event_type="$2"
+  local expected_status="$3"
+  curl --fail --silent --show-error --cookie "${cookie_jar}" --header 'content-type: application/json' \
+    --data "{\"idempotencyKey\":\"${event_key}\",\"eventType\":\"${event_type}\",\"occurredAt\":\"2027-02-28T12:00:00.000Z\"}" \
+    http://127.0.0.1:3000/api/licensing/licenses/${billing_license_id}/sandbox-events \
+    | jq -e --arg status "${expected_status}" '.duplicate == false and .data.resultingStatus == $status'
+}
+
+post_sandbox_event 'sandbox-renewal-1' 'renewal.succeeded' 'active'
+post_sandbox_event 'sandbox-payment-failed-1' 'payment.failed' 'past_due'
+billing_verify_body="{\"appId\":\"${app_id}\",\"licenseKey\":\"${billing_license_key}\"}"
+billing_past_due_status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+  --header 'content-type: application/json' --data "${billing_verify_body}" \
+  http://127.0.0.1:3000/api/v1/licenses/verify)"
+test "${billing_past_due_status}" = "403"
+post_sandbox_event 'sandbox-renewal-2' 'renewal.succeeded' 'active'
+curl --fail --silent --show-error --header 'content-type: application/json' --data "${billing_verify_body}" \
+  http://127.0.0.1:3000/api/v1/licenses/verify | jq -e '.valid == true'
+post_sandbox_event 'sandbox-cancel-1' 'subscription.cancelled' 'cancelled'
+post_sandbox_event 'sandbox-refund-1' 'refund.completed' 'refunded'
+post_sandbox_event 'sandbox-dispute-1' 'dispute.opened' 'disputed'
+curl --fail --silent --show-error --cookie "${cookie_jar}" \
+  http://127.0.0.1:3000/api/licensing/licenses/${billing_license_id}/billing-events \
+  | jq -e '.data | length == 7'
+psql --set ON_ERROR_STOP=1 --host 127.0.0.1 --username wppconnect --dbname wppconnect \
+  --tuples-only --no-align --command "SELECT COUNT(*) FROM extension_license_audit_events WHERE license_id='${billing_license_id}' AND event LIKE 'billing.%'" \
+  | grep -qx '7'
+curl --fail --silent --show-error --cookie "${cookie_jar}" --header 'content-type: application/json' \
+  --data '{"status":"revoked"}' \
+  http://127.0.0.1:3000/api/licensing/licenses/${billing_license_id}/status | jq -e '.data.status == "revoked"'
+curl --fail --silent --show-error --cookie "${cookie_jar}" --header 'content-type: application/json' \
+  --data "${purchase_body}" \
+  http://127.0.0.1:3000/api/licensing/licenses/${billing_license_id}/sandbox-events \
+  | jq -e '.duplicate == true'
+revoked_billing_status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+  --cookie "${cookie_jar}" --header 'content-type: application/json' \
+  --data '{"idempotencyKey":"sandbox-renewal-after-revoke","eventType":"renewal.succeeded"}' \
+  http://127.0.0.1:3000/api/licensing/licenses/${billing_license_id}/sandbox-events)"
+test "${revoked_billing_status}" = "409"
+
 license_response="$(curl --fail --silent --show-error --cookie "${cookie_jar}" \
   --header 'content-type: application/json' \
   --data "{\"planId\":\"${plan_id}\",\"maxInstallations\":1}" \
@@ -228,4 +292,4 @@ logged_out_status="$(curl --silent --output /dev/null --write-out '%{http_code}'
   --cookie "${cookie_jar}" http://127.0.0.1:3000/api/platform/overview)"
 test "${logged_out_status}" = "401"
 
-echo 'Platform smoke passed: sessions, API keys, usage, telemetry, catalog, signed compatibility manifest, retention, and licensing.'
+echo 'Platform smoke passed: sessions, API keys, usage, telemetry, catalog, signed compatibility manifest, retention, licensing, and sandbox billing lifecycle.'

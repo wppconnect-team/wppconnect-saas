@@ -160,7 +160,8 @@ jobs:
           test "${status}" = 'succeeded'
           result_url="$(jq -er '.data.resultUrl' <<<"${job}")"
           curl --fail --silent --show-error "${result_url}" --output "${output}"
-          docker cp "${output}" "${container}:/tmp/output.ogg"
+          docker exec --interactive --user root "${container}" sh -c \
+            'cat > /tmp/output.ogg' < "${output}"
           docker exec "${container}" ffprobe -v error -select_streams a:0 \
             -show_entries stream=codec_name,sample_rate,channels -of json /tmp/output.ogg \
             | jq -e '.streams[0].codec_name == "opus" and .streams[0].sample_rate == "48000" and .streams[0].channels == 1' >/dev/null

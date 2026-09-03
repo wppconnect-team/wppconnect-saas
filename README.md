@@ -67,6 +67,25 @@ offline com a mesma chave de idempotência. O control plane oferece:
 
 Nenhum conteúdo de conversa ou identificador de usuário faz parte do schema.
 
+## Sincronização de catálogo
+
+O control plane conecta Shopify (OAuth ou access token) e WooCommerce
+(consumer key/secret) ao catálogo do WPPConnect Server. As credenciais são
+cifradas, e ambos os provedores viram o mesmo modelo canônico de produto:
+título, descrição, preço em unidade mínima, moeda, disponibilidade, URL, SKU e
+até dez imagens.
+
+O fluxo exige duas chamadas distintas:
+
+1. `POST /api/catalog/connections/{id}/preview-sync` cria um diff sem mutações;
+2. `POST /api/catalog/connections/{id}/run-sync` aplica exatamente um preview
+   concluído, com idempotência, checkpoint e até cinco tentativas por operação.
+
+Mapeamentos persistentes por ID/SKU evitam duplicações. Produtos ausentes ou
+indisponíveis são ocultados, nunca excluídos. O resultado fica disponível em
+`GET /api/catalog/runs/{id}` e, opcionalmente, em webhook HMAC idempotente. Em
+Vercel, o cron interno drena a fila; em Docker, o worker faz isso continuamente.
+
 ## Stack
 
 | Camada   | Tecnologia                            |

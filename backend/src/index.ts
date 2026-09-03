@@ -25,6 +25,8 @@ import { runMigrations }   from './lib/migrations';
 import { startCompatibilityWebhookWorker } from './workers/compatibilityWebhookWorker';
 import { licensingRoutes, publicLicensingRoutes } from './routes/licensing';
 import { internalTelemetryRoutes, telemetryIngestRoutes, telemetryRoutes } from './routes/telemetry';
+import { catalogSyncRoutes, internalCatalogSyncRoutes, publicShopifyOAuthRoutes } from './routes/catalogSync';
+import { startCatalogSyncWorker } from './workers/catalogSyncWorker';
 
 const PORT = Number(process.env.PORT ?? 3000);
 
@@ -93,6 +95,9 @@ const app = new Elysia()
   .use(telemetryIngestRoutes)
   .use(telemetryRoutes)
   .use(internalTelemetryRoutes)
+  .use(catalogSyncRoutes)
+  .use(publicShopifyOAuthRoutes)
+  .use(internalCatalogSyncRoutes)
 
   // Erro global
   .onError(({ code, error, set }) => {
@@ -114,6 +119,7 @@ await runSetup();
 if (process.env.VERCEL !== '1') {
   app.listen(PORT);
   startCompatibilityWebhookWorker();
+  startCatalogSyncWorker();
   console.log(`🦊  Wppconnect API → http://localhost:${PORT}`);
 }
 

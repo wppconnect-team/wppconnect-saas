@@ -58,6 +58,10 @@ export function createApp(repo: MediaRepository, storage: EncryptedStorage, conf
   async function createJob(request: Request, kind: JobKind, set: { status?: number | string }) {
     const auth = await authorize(request, repo, 'media:write');
     if (auth.status !== 200) { set.status = auth.status; return { error: auth.error }; }
+    if (kind === 'transcription' && !config.transcriptionApiKey) {
+      set.status = 503;
+      return { error: 'Transcription is not configured in this environment' };
+    }
     const idempotencyKey = request.headers.get('idempotency-key')?.trim() ?? '';
     if (idempotencyKey.length < 8 || idempotencyKey.length > 200) {
       set.status = 400; return { error: 'Idempotency-Key must contain between 8 and 200 characters' };
@@ -93,7 +97,15 @@ export function createApp(repo: MediaRepository, storage: EncryptedStorage, conf
   }
 
   return new Elysia()
-    .get('/health', () => ({ status: 'ok', service: 'wppconnect-media-api', timestamp: new Date().toISOString() }))
+    .get('/health', () => ({
+      status: 'ok',
+      service: 'wppconnect-media-api',
+      capabilities: {
+        conversion: true,
+        transcription: Boolean(config.transcriptionApiKey),
+      },
+      timestamp: new Date().toISOString(),
+    }))
     .post('/v1/audio/conversions', ({ request, set }) => createJob(request, 'conversion', set))
     .post('/v1/audio/transcriptions', ({ request, set }) => createJob(request, 'transcription', set))
     .get('/v1/jobs/:id', async ({ request, params, set }) => {

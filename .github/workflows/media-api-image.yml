@@ -46,6 +46,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Validate Azure deployment templates
+        run: |
+          az bicep build --file services/media-api/deploy/azure/foundation.bicep --stdout >/dev/null
+          az bicep build --file services/media-api/deploy/azure/app.bicep --stdout >/dev/null
+
       - name: Apply database migrations
         run: |
           for migration in backend/migrations/*.sql; do

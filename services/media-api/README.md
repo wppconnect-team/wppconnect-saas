@@ -22,3 +22,33 @@ listed in `.env.example`.
 The WPPConnect organization currently disables public package visibility. Until
 an organization owner enables it, authenticate `docker` to `ghcr.io` with a
 GitHub token carrying `read:packages` before pulling the image.
+
+## Azure Container Apps
+
+`deploy/azure` provides a repeatable production topology for the worker:
+
+- Azure Container Registry with managed-identity pulls (no registry password);
+- one continuously available Container Apps replica so queued jobs are not abandoned;
+- autoscaling up to three replicas using HTTP concurrency;
+- encrypted Azure Files mounted at `/data` for retained inputs and outputs;
+- health probes and Log Analytics;
+- secrets passed through a temporary ARM parameter file that is deleted after deployment.
+
+Copy `deploy/azure/media-api.env.example` to a location outside the repository,
+preserve the storage key between deployments, and run from the repository root:
+
+```powershell
+./services/media-api/deploy/azure/deploy.ps1 -SecretsFile C:\secure\media-api.env -WhatIf
+./services/media-api/deploy/azure/deploy.ps1 -SecretsFile C:\secure\media-api.env
+```
+
+The command returns `mediaApiUrl`; configure that value as `MEDIA_API_URL` in
+WPPConnect Cloud only after the health check succeeds. `TRANSCRIPTION_API_KEY`
+may be omitted for conversion-only deployments, but transcription jobs must not
+be offered publicly until a compatible provider is configured and tested. The
+public `/health` response exposes `capabilities.conversion` and
+`capabilities.transcription`; an unavailable transcription request returns 503
+without creating a job.
+
+This topology creates billable Azure resources. A minimum replica is deliberate:
+the current worker polls PostgreSQL continuously and cannot safely scale to zero.

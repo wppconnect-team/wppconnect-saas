@@ -116,6 +116,11 @@ Cada evento é idempotente e auditável; o histórico está em
 dinheiro nem fingem ser webhooks Stripe. Stripe Connect permanece condicionado
 ao modelo de charge/repasse, KYC, termos, reserva para disputas e conciliação.
 
+Validações, ativações, heartbeats e desativações bem-sucedidas são agregadas por
+extensão e dia em `GET /api/licensing/apps/{id}/usage`. O resumo inclui também
+licenças e instalações atualmente ativas. Tentativas inválidas não entram na
+medição, evitando que abuso externo gere cobrança para o criador.
+
 ## Stack
 
 | Camada   | Tecnologia                            |

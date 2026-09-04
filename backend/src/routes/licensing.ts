@@ -16,6 +16,11 @@ import {
   type LicenseBillingStatus,
   type SandboxBillingEventType,
 } from '../lib/licenseBilling';
+import {
+  readLicenseUsage,
+  recordLicenseUsage,
+  resolveLicenseUsageWindow,
+} from '../lib/licenseUsage';
 
 type LicenseRow = {
   id: string; appId: string; planId: string; status: string; expiresAt: Date | null;
@@ -167,6 +172,19 @@ export const licensingRoutes = new Elysia({ prefix: '/api/licensing' })
       GROUP BY license.id, plan.slug ORDER BY license.created_at DESC
     ` };
   })
+  .get('/apps/:appId/usage', async ({ params, query, workspaceId, set }) => {
+    if (!(await appOwnership(workspaceId, params.appId))[0]) { set.status = 404; return { error: 'App não encontrado' }; }
+    try {
+      const window = resolveLicenseUsageWindow(query.from, query.to);
+      return { data: await readLicenseUsage(sql, params.appId, window) };
+    } catch (error) {
+      set.status = 422;
+      return { error: String(error) };
+    }
+  }, { query: t.Object({
+    from: t.Optional(t.String({ pattern: '^\\d{4}-\\d{2}-\\d{2}$' })),
+    to: t.Optional(t.String({ pattern: '^\\d{4}-\\d{2}-\\d{2}$' })),
+  }) })
   .post('/apps/:appId/licenses', async ({ params, body, workspaceId, set }) => {
     if (!(await appOwnership(workspaceId, params.appId))[0]) { set.status = 404; return { error: 'App não encontrado' }; }
     const [plan] = await sql`SELECT id FROM extension_plans WHERE id = ${body.planId} AND app_id = ${params.appId} AND active = TRUE`;
@@ -324,6 +342,7 @@ export const publicLicensingRoutes = new Elysia({ prefix: '/api/v1/licenses' })
       `;
       if (!activation) { set.status = 403; return { valid: false, error: 'Instalação não ativada' }; }
     }
+    await recordLicenseUsage(sql, license.appId, 'verify');
     return { valid: true, ...credential(license, hash) };
   }, { body: licenseRequest })
   .post('/activate', async ({ body, set }) => {
@@ -345,6 +364,7 @@ export const publicLicensingRoutes = new Elysia({ prefix: '/api/v1/licenses' })
             metadata = ${tx.json((body.metadata ?? {}) as Parameters<typeof sql.json>[0])}
           WHERE id = ${existing.id as string} RETURNING id
         `;
+        await recordLicenseUsage(tx, license.appId, 'activate');
         return updated;
       }
       const [count] = await tx<{ total: number }[]>`
@@ -358,6 +378,7 @@ export const publicLicensingRoutes = new Elysia({ prefix: '/api/v1/licenses' })
                 ${tx.json((body.metadata ?? {}) as Parameters<typeof sql.json>[0])}) RETURNING id
       `;
       await audit(tx, license.appId, license.id, created.id as string, 'installation.activated', 'sdk');
+      await recordLicenseUsage(tx, license.appId, 'activate');
       return created;
     });
     if (!activation) { set.status = 409; return { valid: false, error: 'Limite de instalações atingido' }; }
@@ -369,11 +390,16 @@ export const publicLicensingRoutes = new Elysia({ prefix: '/api/v1/licenses' })
     const license = await readLicense(body.appId, body.licenseKey);
     if (!license || !licenseIsUsable(license)) { set.status = 403; return { valid: false, error: 'Licença inválida ou inativa' }; }
     const hash = installationHash(body.appId, body.installationId);
-    const [activation] = await sql`
-      UPDATE extension_license_activations SET last_heartbeat_at = NOW()
-      WHERE license_id = ${license.id} AND installation_hash = ${hash} AND status = 'active'
-      RETURNING id
-    `;
+    const activation = await sql.begin(async (transaction) => {
+      const tx = transaction as unknown as postgres.Sql;
+      const [updated] = await tx`
+        UPDATE extension_license_activations SET last_heartbeat_at = NOW()
+        WHERE license_id = ${license.id} AND installation_hash = ${hash} AND status = 'active'
+        RETURNING id
+      `;
+      if (updated) await recordLicenseUsage(tx, license.appId, 'heartbeat');
+      return updated;
+    });
     if (!activation) { set.status = 404; return { valid: false, error: 'Instalação não ativada' }; }
     return { valid: true, ...credential(license, hash) };
   }, { body: licenseRequest })
@@ -382,13 +408,19 @@ export const publicLicensingRoutes = new Elysia({ prefix: '/api/v1/licenses' })
     const license = await readLicense(body.appId, body.licenseKey);
     if (!license) { set.status = 403; return { error: 'Licença inválida' }; }
     const hash = installationHash(body.appId, body.installationId);
-    const [activation] = await sql`
-      UPDATE extension_license_activations
-      SET status = 'deactivated', deactivated_at = NOW(), last_heartbeat_at = NOW()
-      WHERE license_id = ${license.id} AND installation_hash = ${hash} AND status = 'active'
-      RETURNING id
-    `;
+    const activation = await sql.begin(async (transaction) => {
+      const tx = transaction as unknown as postgres.Sql;
+      const [updated] = await tx`
+        UPDATE extension_license_activations
+        SET status = 'deactivated', deactivated_at = NOW(), last_heartbeat_at = NOW()
+        WHERE license_id = ${license.id} AND installation_hash = ${hash} AND status = 'active'
+        RETURNING id
+      `;
+      if (!updated) return undefined;
+      await audit(tx, license.appId, license.id, updated.id as string, 'installation.deactivated', 'sdk');
+      await recordLicenseUsage(tx, license.appId, 'deactivate');
+      return updated;
+    });
     if (!activation) { set.status = 404; return { error: 'Instalação ativa não encontrada' }; }
-    await audit(sql, license.appId, license.id, activation.id as string, 'installation.deactivated', 'sdk');
     return { deactivated: true };
   }, { body: licenseRequest });

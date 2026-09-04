@@ -249,6 +249,9 @@ curl --fail --silent --show-error --header 'content-type: application/json' --da
   http://127.0.0.1:3000/api/v1/licenses/heartbeat | jq -e '.valid == true'
 curl --fail --silent --show-error --header 'content-type: application/json' --data "${activation_body}" \
   http://127.0.0.1:3000/api/v1/licenses/deactivate | jq -e '.deactivated == true'
+curl --fail --silent --show-error --cookie "${cookie_jar}" \
+  "http://127.0.0.1:3000/api/licensing/apps/${app_id}/usage" \
+  | jq -e '.data.current.activeLicenses == "1" and .data.current.activeInstallations == "0" and .data.operations.verifications == "2" and .data.operations.activations == "1" and .data.operations.heartbeats == "1" and .data.operations.deactivations == "1" and (.data.daily | length == 1)'
 deactivated_verify_status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
   --header 'content-type: application/json' --data "${activation_body}" \
   http://127.0.0.1:3000/api/v1/licenses/verify)"
@@ -292,4 +295,4 @@ logged_out_status="$(curl --silent --output /dev/null --write-out '%{http_code}'
   --cookie "${cookie_jar}" http://127.0.0.1:3000/api/platform/overview)"
 test "${logged_out_status}" = "401"
 
-echo 'Platform smoke passed: sessions, API keys, usage, telemetry, catalog, signed compatibility manifest, retention, licensing, and sandbox billing lifecycle.'
+echo 'Platform smoke passed: sessions, API keys, usage, telemetry, catalog, signed compatibility manifest, retention, licensing, usage metering, and sandbox billing lifecycle.'

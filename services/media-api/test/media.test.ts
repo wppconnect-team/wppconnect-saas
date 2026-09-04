@@ -176,6 +176,34 @@ describe('HTTP contract', () => {
     expect(duplicate.status).toBe(200);
     expect((await duplicate.json() as { duplicate: boolean }).duplicate).toBe(true);
   });
+
+  test('advertises capabilities and rejects unavailable transcription before queueing', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'wpp-app-test-')); dirs.push(dir);
+    const config = await testConfig(dir);
+    const storage = new EncryptedStorage(dir, config.storageKey);
+    const repo = new MemoryRepository();
+    const app = createApp(repo, storage, config);
+
+    const health = await app.handle(new Request('http://local/health'));
+    expect(health.status).toBe(200);
+    expect((await health.json() as { capabilities: Record<string, boolean> }).capabilities).toEqual({
+      conversion: true,
+      transcription: false,
+    });
+
+    const unavailable = await app.handle(new Request('http://local/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer wpp_test_valid',
+        'content-type': 'application/json',
+        'idempotency-key': 'transcription-1234',
+      },
+      body: JSON.stringify({ sourceUrl: 'https://media.example.test/audio.ogg' }),
+    }));
+    expect(unavailable.status).toBe(503);
+    expect(await unavailable.json()).toEqual({ error: 'Transcription is not configured in this environment' });
+    expect(repo.job).toBeNull();
+  });
 });
 
 describe('signatures', () => {

@@ -14,6 +14,15 @@ export interface TelemetryOptions {
   autoFlush?: boolean
   fetch?: typeof fetch
   storage?: TelemetryStorage
+  requestTimeoutMs?: number
+  onError?: (error: unknown) => void
+}
+export interface TelemetryFlushResult {
+  delivered: number
+  pending: number
+  status?: number
+  error?: 'INVALID_ACKNOWLEDGEMENT'
+  queueFull?: boolean
 }
 export class WppTelemetryClient {
   configure(options: TelemetryOptions): this
@@ -24,7 +33,7 @@ export class WppTelemetryClient {
   recordResponseLatency(durationMs: number): void
   recordFunction(name: string, durationMs: number, ok?: boolean): void
   setConnected(connected: boolean): void
-  flush(): Promise<{ delivered: number; pending: number; status?: number }>
-  close(): Promise<{ delivered: number; pending: number; status?: number }>
+  flush(): Promise<TelemetryFlushResult>
+  close(): Promise<TelemetryFlushResult>
 }
 export const wppTelemetry: WppTelemetryClient

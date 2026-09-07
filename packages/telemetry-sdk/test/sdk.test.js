@@ -11,7 +11,7 @@ test('collects aggregate metrics only and sends the closed schema', async () => 
   const storage = store()
   let payload
   const client = new WppTelemetryClient().configure({ endpoint: 'https://control.example', apiKey: 'wpp_test_key', sourceId: 'server-a',
-    autoFlush: false, compression: false, storage, fetch: async (_url, init) => { payload = JSON.parse(new TextDecoder().decode(init.body)); return new Response('{}', { status: 202 }) } })
+    autoFlush: false, compression: false, storage, fetch: async (_url, init) => { payload = JSON.parse(new TextDecoder().decode(init.body)); return Response.json({accepted:payload.snapshots.length,duplicates:0}, { status: 202 }) } })
   client.recordMessage('sent', 2); client.recordMessage('received'); client.recordDeletedMessage()
   client.recordError(); client.recordResponseLatency(120); client.recordFunction('sendText', 50, true)
   client.setConnected(true)
@@ -31,7 +31,7 @@ test('retains an offline batch and retries it idempotently before newer data', a
   const client = new WppTelemetryClient().configure({ endpoint: 'https://control.example', apiKey: 'wpp_test_key', sourceId: 'server-a',
     autoFlush: false, compression: false, storage, fetch: async (_url, init) => {
       if (!online) throw new TypeError('offline')
-      delivered.push(JSON.parse(new TextDecoder().decode(init.body))); return new Response('{}', { status: 202 })
+      const batch=JSON.parse(new TextDecoder().decode(init.body));delivered.push(batch); return Response.json({accepted:batch.snapshots.length,duplicates:0}, { status: 202 })
     } })
   client.recordMessage('sent')
   assert.deepEqual(await client.flush(), { delivered: 0, pending: 1 })

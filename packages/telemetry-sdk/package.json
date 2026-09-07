@@ -1,6 +1,6 @@
 {
   "name": "@wppconnect/telemetry-sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Explicit opt-in aggregate telemetry for WPPConnect applications",
   "type": "module",
   "main": "src/index.js",

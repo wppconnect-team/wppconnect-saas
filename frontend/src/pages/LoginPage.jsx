@@ -86,8 +86,8 @@ function ForgotPasswordForm({ onBack }) {
   return (
     <div className="login-form">
       <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div className="brand-mark">Wpp</div>
-        <div className="brand-name">Wppconnect<small>workspace</small></div>
+        <img className="official-brand" src="/brand/wppconnect-light.png" alt="WPPConnect" width="120" height="66" />
+        <div className="brand-name"><small>workspace</small></div>
       </div>
 
       <h1>Esqueci minha senha</h1>
@@ -167,8 +167,8 @@ function ResetPasswordForm({ token, onSuccess }) {
   return (
     <div className="login-form">
       <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div className="brand-mark">Wpp</div>
-        <div className="brand-name">Wppconnect<small>workspace</small></div>
+        <img className="official-brand" src="/brand/wppconnect-light.png" alt="WPPConnect" width="120" height="66" />
+        <div className="brand-name"><small>workspace</small></div>
       </div>
 
       <h1>Nova senha</h1>
@@ -244,8 +244,8 @@ function RegisterForm({ onLogin, onBack }) {
   return (
     <div className="login-form">
       <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div className="brand-mark">Wpp</div>
-        <div className="brand-name">Wppconnect<small>workspace</small></div>
+        <img className="official-brand" src="/brand/wppconnect-light.png" alt="WPPConnect" width="120" height="66" />
+        <div className="brand-name"><small>workspace</small></div>
       </div>
 
       <h1>Criar workspace</h1>
@@ -486,8 +486,8 @@ export default function LoginPage({ onLogin, theme, setTheme }) {
       <div className="login-form-wrap">
         <div className="login-form">
           <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div className="brand-mark">Wpp</div>
-            <div className="brand-name">Wppconnect<small>workspace</small></div>
+            <img className="official-brand" src="/brand/wppconnect-light.png" alt="WPPConnect" width="120" height="66" />
+            <div className="brand-name"><small>workspace</small></div>
           </div>
 
           <h1>Entrar no workspace</h1>

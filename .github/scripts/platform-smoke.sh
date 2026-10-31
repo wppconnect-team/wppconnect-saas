@@ -79,7 +79,14 @@ curl --fail --silent --show-error --header "authorization: Bearer ${api_key}" \
   --header 'content-type: application/json' --data "${usage_body}" \
   http://127.0.0.1:3000/api/v1/usage/events | jq -e '.duplicate == true'
 
-telemetry_body='{"schemaVersion":"1","snapshots":[{"schemaVersion":"1","idempotencyKey":"platform-telemetry-1","sourceId":"smoke-node","sdkVersion":"0.1.0","waVersion":"2.3000.1","observedFrom":"2026-09-03T10:00:00.000Z","observedTo":"2026-09-03T10:01:00.000Z","counters":{"messages.sent":4,"messages.received":3,"messages.deleted":1,"errors.total":2},"responseLatency":{"sumMs":1200,"count":4},"availability":{"connectedSeconds":58,"observedSeconds":60},"functions":[{"name":"sendText","calls":4,"errors":1,"durationMsSum":900}]}]}'
+# Keep the sample inside the retention window on every CI run.
+telemetry_observed_at="$(date +%s)"
+telemetry_observed_from="$(date -u -d "@$((telemetry_observed_at - 60))" +%Y-%m-%dT%H:%M:%S.000Z)"
+telemetry_observed_to="$(date -u -d "@${telemetry_observed_at}" +%Y-%m-%dT%H:%M:%S.000Z)"
+telemetry_body="$(cat <<JSON
+{"schemaVersion":"1","snapshots":[{"schemaVersion":"1","idempotencyKey":"platform-telemetry-1","sourceId":"smoke-node","sdkVersion":"0.1.0","waVersion":"2.3000.1","observedFrom":"${telemetry_observed_from}","observedTo":"${telemetry_observed_to}","counters":{"messages.sent":4,"messages.received":3,"messages.deleted":1,"errors.total":2},"responseLatency":{"sumMs":1200,"count":4},"availability":{"connectedSeconds":58,"observedSeconds":60},"functions":[{"name":"sendText","calls":4,"errors":1,"durationMsSum":900}]}]}
+JSON
+)"
 printf '%s' "${telemetry_body}" | gzip -c >"${telemetry_payload}"
 curl --fail --silent --show-error --header "authorization: Bearer ${api_key}" \
   --header 'content-type: application/octet-stream' --header 'content-encoding: gzip' \

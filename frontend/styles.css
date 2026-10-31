@@ -1565,4 +1565,7 @@ button { font-family: inherit; cursor: pointer; border: 0; background: none; col
 /* The same official mark is recolored only for surface contrast. */
 .official-brand { width: 120px; height: 66px; object-fit: contain; flex-shrink: 0; }
 :root[data-theme="dark"] .official-brand { filter: brightness(0) invert(1); }
+.sidebar .brand { flex-wrap: wrap; row-gap: 4px; }
+.sidebar .brand-name { order: 1; flex-basis: 100%; }
+.sidebar .brand-name small { margin-top: 0; }
 .sidebar.collapsed .official-brand { width: 40px; height: 24px; }

@@ -30,10 +30,9 @@ export function Sidebar({ currentNav, onNav, onLogout, open, onClose, collapsed,
       {open && <div className="sidebar-overlay" onClick={onClose}/>}
       <aside className={"sidebar" + (open ? " open" : "") + (collapsed ? " collapsed" : "")}>
         <div className="brand">
-          <div className="brand-mark">Wpp</div>
+          <img className="official-brand" src="/brand/wppconnect-light.png" alt="WPPConnect" width="120" height="66" />
           {!collapsed && (
             <div className="brand-name">
-              Wppconnect
               <small>workspace</small>
             </div>
           )}

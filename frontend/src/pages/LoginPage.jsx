@@ -86,7 +86,7 @@ function ForgotPasswordForm({ onBack }) {
   return (
     <div className="login-form">
       <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <img className="official-brand" src="/brand/wppconnect-light.png" alt="WPPConnect" width="120" height="66" />
+        <img className="official-brand" src="/brand/v2/wppconnect-light.png" alt="WPPConnect" width="120" height="66" />
         <div className="brand-name"><small>workspace</small></div>
       </div>
 
@@ -167,7 +167,7 @@ function ResetPasswordForm({ token, onSuccess }) {
   return (
     <div className="login-form">
       <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <img className="official-brand" src="/brand/wppconnect-light.png" alt="WPPConnect" width="120" height="66" />
+        <img className="official-brand" src="/brand/v2/wppconnect-light.png" alt="WPPConnect" width="120" height="66" />
         <div className="brand-name"><small>workspace</small></div>
       </div>
 
@@ -244,7 +244,7 @@ function RegisterForm({ onLogin, onBack }) {
   return (
     <div className="login-form">
       <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <img className="official-brand" src="/brand/wppconnect-light.png" alt="WPPConnect" width="120" height="66" />
+        <img className="official-brand" src="/brand/v2/wppconnect-light.png" alt="WPPConnect" width="120" height="66" />
         <div className="brand-name"><small>workspace</small></div>
       </div>
 
@@ -486,7 +486,7 @@ export default function LoginPage({ onLogin, theme, setTheme }) {
       <div className="login-form-wrap">
         <div className="login-form">
           <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <img className="official-brand" src="/brand/wppconnect-light.png" alt="WPPConnect" width="120" height="66" />
+            <img className="official-brand" src="/brand/v2/wppconnect-light.png" alt="WPPConnect" width="120" height="66" />
             <div className="brand-name"><small>workspace</small></div>
           </div>
 

@@ -9,7 +9,7 @@ export default function PrivacidadePage({ onClose }) {
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 40 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <img className="official-brand" src="/brand/wppconnect-light.png" alt="WPPConnect" width="120" height="66" />
+            <img className="official-brand" src="/brand/v2/wppconnect-light.png" alt="WPPConnect" width="120" height="66" />
           </div>
           <button className="btn secondary" onClick={onClose}>
             <Ic.X style={{ width: 14, height: 14 }}/> Fechar
